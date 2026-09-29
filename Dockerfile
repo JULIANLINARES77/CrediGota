@@ -18,8 +18,9 @@ RUN curl -fL \
     "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
     -o /tmp/flutter.tar.xz \
   && echo "${FLUTTER_ARCHIVE_SHA256}  /tmp/flutter.tar.xz" | sha256sum -c - \
-  && tar -xf /tmp/flutter.tar.xz -C /opt \
-  && rm /tmp/flutter.tar.xz
+  && tar -xf /tmp/flutter.tar.xz -C /opt --no-same-owner \
+  && rm /tmp/flutter.tar.xz \
+  && git config --global --add safe.directory /opt/flutter
 
 ENV PATH="/opt/flutter/bin:/opt/flutter/bin/cache/dart-sdk/bin:${PATH}"
 
