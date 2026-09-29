@@ -19,6 +19,6 @@ COPY --from=build /app/build/web /usr/share/nginx/html
 EXPOSE 10000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD-SHELL wget -qO- "http://127.0.0.1:$$PORT/" >/dev/null || exit 1
+  CMD wget -qO- "http://127.0.0.1:$PORT/" >/dev/null || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
