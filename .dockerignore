@@ -1,0 +1,13 @@
+.git
+.idea
+.dart_tool
+.pub-cache
+.pub
+build
+coverage
+android/.gradle
+android/local.properties
+android/key.properties
+**/*.jks
+**/*.keystore
+**/key.properties
