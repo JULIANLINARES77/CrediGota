@@ -1,4 +1,27 @@
-FROM ghcr.io/cirruslabs/flutter:3.44.8 AS build
+FROM ubuntu:24.04 AS build
+
+ARG FLUTTER_VERSION=3.44.8
+ARG FLUTTER_ARCHIVE_SHA256=672089e001571a9fbb209a495c583580c0c6c73ef98999264ba07fa93ace332d
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    libglu1-mesa \
+    unzip \
+    xz-utils \
+    zip \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fL \
+    "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
+    -o /tmp/flutter.tar.xz \
+  && echo "${FLUTTER_ARCHIVE_SHA256}  /tmp/flutter.tar.xz" | sha256sum -c - \
+  && tar -xf /tmp/flutter.tar.xz -C /opt \
+  && rm /tmp/flutter.tar.xz
+
+ENV PATH="/opt/flutter/bin:/opt/flutter/bin/cache/dart-sdk/bin:${PATH}"
 
 WORKDIR /app
 
