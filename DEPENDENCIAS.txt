@@ -59,7 +59,13 @@ Construir imagen:
     docker build -t gotacontrol-web .
 
 Probar localmente en http://localhost:8080:
-    docker run --rm -p 8080:80 gotacontrol-web
+    docker run --rm -e PORT=10000 -p 8080:10000 gotacontrol-web
+
+RENDER
+------
+Crear un Web Service conectado al repositorio JULIANLINARES77/CrediGota,
+seleccionar Docker como runtime y usar la raiz del repositorio como contexto.
+Render inyecta PORT (por defecto 10000) y Nginx escucha ese puerto.
 
 Para publicar en un dominio, configurar HTTPS en el proxy inverso o proveedor
 de hosting. Esta interfaz usa datos de demostracion en memoria; no es todavia
