@@ -6,7 +6,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../data/models/cuota.dart';
 import '../../../data/models/prestamo.dart';
-import '../../../logic/providers/demo_provider.dart';
+import '../../../logic/providers/gota_provider.dart';
 import '../../widgets/cliente_card.dart';
 import '../../widgets/payment_bottom_sheet.dart';
 import '../../widgets/resumen_card.dart';
@@ -19,7 +19,43 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final demo = context.watch<DemoProvider>();
+    final demo = context.watch<GotaProvider>();
+    if (demo.cargando) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (demo.errorCarga != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text(AppStrings.appName)),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.storage_outlined, size: 42),
+                const SizedBox(height: 12),
+                const Text(
+                  'No se pudo abrir la base de datos local.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  demo.errorCarga!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: demo.cargarDatos,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     final ancho = MediaQuery.sizeOf(context).width;
     final dosColumnas = ancho > 650;
     return Scaffold(
@@ -185,7 +221,7 @@ class _CobroDeHoy extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final demo = context.read<DemoProvider>();
+    final demo = context.read<GotaProvider>();
     final prestamo = demo.prestamoPorId(cuota.prestamoId);
     final cliente = prestamo == null
         ? null

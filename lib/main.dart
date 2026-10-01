@@ -1,18 +1,21 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/constants/app_colors.dart';
 import 'core/constants/app_strings.dart';
-import 'logic/providers/demo_provider.dart';
+import 'data/database/database_helper.dart';
+import 'logic/providers/gota_provider.dart';
 import 'logic/services/notificacion_service.dart';
 import 'ui/screens/main_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb) await DatabaseHelper.instance.database;
   await NotificacionService.instance.inicializarNotificaciones();
   runApp(
     ChangeNotifierProvider(
-      create: (_) => DemoProvider(),
+      create: (_) => GotaProvider()..cargarDatos(),
       child: const GotaControlApp(),
     ),
   );

@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../data/models/prestamo.dart';
-import '../../../logic/providers/demo_provider.dart';
+import '../../../logic/providers/gota_provider.dart';
 import '../../../logic/services/calculadora_service.dart';
 import '../../widgets/resumen_card.dart';
 import 'prestamo_detail_screen.dart';
@@ -54,7 +54,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final demo = context.watch<DemoProvider>();
+    final demo = context.watch<GotaProvider>();
     _clienteId ??= demo.clientes.isEmpty ? null : demo.clientes.first.id;
     final calculo = _calculoPreview();
     final fechas = _fechasPreview();
@@ -367,7 +367,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
     if (mounted) setState(() {});
   }
 
-  void _crearPrestamo(DemoProvider demo) {
+  Future<void> _crearPrestamo(GotaProvider demo) async {
     if (!_formKey.currentState!.validate()) return;
     if (_frecuencia == CalculadoraService.frecuenciaPersonalizada &&
         _dias.isEmpty) {
@@ -378,7 +378,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
     }
     final Prestamo prestamo;
     try {
-      prestamo = demo.crearPrestamo(
+      prestamo = await demo.crearPrestamo(
         clienteId: _clienteId!,
         capital: _parsear(_capital.text)!,
         porcentajeInteres: _parsear(_interes.text)!,
@@ -390,11 +390,13 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
             : null,
       );
     } on Object catch (error) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error.toString())));
       return;
     }
+    if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Préstamo creado.')));
@@ -448,8 +450,8 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
     if (confirmado == true &&
         nombre.text.trim().isNotEmpty &&
         telefono.text.trim().isNotEmpty) {
-      final demo = context.read<DemoProvider>();
-      demo.agregarCliente(nombre: nombre.text, telefono: telefono.text);
+      final demo = context.read<GotaProvider>();
+      await demo.agregarCliente(nombre: nombre.text, telefono: telefono.text);
       setState(() => _clienteId = demo.clientes.last.id);
     }
     nombre.dispose();

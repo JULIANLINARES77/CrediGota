@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/models/cliente.dart';
 import '../../../data/models/prestamo.dart';
-import '../../../logic/providers/demo_provider.dart';
+import '../../../logic/providers/gota_provider.dart';
 import '../../widgets/cliente_card.dart';
 import '../prestamos/prestamo_detail_screen.dart';
 
@@ -27,7 +27,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final demo = context.watch<DemoProvider>();
+    final demo = context.watch<GotaProvider>();
     final clientes = demo.clientes.where((cliente) {
       if (!cliente.activo) return false;
       final consulta = _busqueda.text.trim().toLowerCase();
@@ -137,7 +137,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
     );
   }
 
-  Widget _clienteListTile(Cliente cliente, DemoProvider demo) {
+  Widget _clienteListTile(Cliente cliente, GotaProvider demo) {
     final prestamos = demo.prestamosDeCliente(cliente.id!);
     final prestamo = prestamos.isEmpty ? null : prestamos.last;
     final cuotaSiguiente = prestamo == null
@@ -175,7 +175,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
         ),
       ),
       onDismissed: (_) =>
-          context.read<DemoProvider>().desactivarCliente(cliente.id!),
+          context.read<GotaProvider>().eliminarCliente(cliente.id!),
       background: Container(
         alignment: Alignment.centerRight,
         margin: const EdgeInsets.only(bottom: 10),
@@ -244,7 +244,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
           const SnackBar(content: Text('Nombre y teléfono son obligatorios.')),
         );
       } else {
-        context.read<DemoProvider>().agregarCliente(
+        context.read<GotaProvider>().agregarCliente(
           nombre: nombre.text,
           telefono: telefono.text,
           cedula: cedula.text.isEmpty ? null : cedula.text,

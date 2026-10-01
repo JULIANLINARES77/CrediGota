@@ -1,5 +1,6 @@
 import '../../core/constants/db_constants.dart';
 import '../../data/database/database_helper.dart';
+import '../../data/models/cliente.dart';
 import '../../data/models/cuota.dart';
 import '../../data/models/prestamo.dart';
 import 'calculadora_service.dart';
@@ -7,13 +8,17 @@ import 'calculadora_service.dart';
 class PrestamoEnMora {
   const PrestamoEnMora({
     required this.prestamo,
+    required this.cliente,
     required this.cuotasAtrasadas,
     required this.diasAtraso,
   });
 
   final Prestamo prestamo;
+  final Cliente cliente;
   final List<Cuota> cuotasAtrasadas;
   final int diasAtraso;
+
+  List<Cuota> get cuotas => cuotasAtrasadas;
 }
 
 class MoraService {
@@ -189,6 +194,10 @@ class MoraService {
 
     for (final prestamo in prestamos) {
       if (prestamo.id == null) continue;
+      final cliente = await _databaseHelper.obtenerClientePorId(
+        prestamo.clienteId,
+      );
+      if (cliente == null) continue;
       final cuotas = await _databaseHelper.obtenerCuotasPorPrestamo(
         prestamo.id!,
       );
@@ -203,6 +212,7 @@ class MoraService {
       enMora.add(
         PrestamoEnMora(
           prestamo: prestamo,
+          cliente: cliente,
           cuotasAtrasadas: atrasadas,
           diasAtraso: maximoAtraso,
         ),

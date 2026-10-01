@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../data/models/cliente.dart';
-import '../../../logic/providers/demo_provider.dart';
+import '../../../logic/providers/gota_provider.dart';
 import 'pdf_generator.dart';
 
 class ReportesScreen extends StatefulWidget {
@@ -33,7 +33,7 @@ class _ReportesScreenState extends State<ReportesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final demo = context.watch<DemoProvider>();
+    final demo = context.watch<GotaProvider>();
     final cliente = _clienteId == null ? null : demo.clientePorId(_clienteId!);
     return Scaffold(
       appBar: AppBar(title: const Text('Reportes')),
@@ -179,7 +179,7 @@ class _ReportesScreenState extends State<ReportesScreen> {
     }
   }
 
-  Future<Uint8List> _generarBytes(DemoProvider demo, Cliente? cliente) =>
+  Future<Uint8List> _generarBytes(GotaProvider demo, Cliente? cliente) =>
       switch (_tipo) {
         'diario' => PdfGenerator.reporteDiario(demo, _fecha),
         'semanal' => PdfGenerator.reporteSemanal(demo, _fecha),
@@ -249,7 +249,7 @@ class _ResumenPreview extends StatelessWidget {
     required this.cliente,
     required this.fecha,
   });
-  final DemoProvider demo;
+  final GotaProvider demo;
   final String tipo;
   final Cliente? cliente;
   final DateTime fecha;

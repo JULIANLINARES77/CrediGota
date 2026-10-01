@@ -7,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/utils/date_utils.dart';
 import '../../../data/models/cliente.dart';
-import '../../../logic/providers/demo_provider.dart';
+import '../../../logic/providers/gota_provider.dart';
 import '../../../logic/services/calculadora_service.dart';
 
 class PdfGenerator {
@@ -17,7 +17,7 @@ class PdfGenerator {
   static const _gris = PdfColor.fromInt(0xFF60646C);
   static final _calculadora = const CalculadoraService();
 
-  static Future<Uint8List> reporteDiario(DemoProvider demo, DateTime fecha) {
+  static Future<Uint8List> reporteDiario(GotaProvider demo, DateTime fecha) {
     final pagos = demo.pagos
         .where((pago) => _mismaFecha(pago.fechaHora, fecha))
         .toList();
@@ -114,7 +114,7 @@ class PdfGenerator {
     ]);
   }
 
-  static Future<Uint8List> estadoCuenta(DemoProvider demo, Cliente cliente) {
+  static Future<Uint8List> estadoCuenta(GotaProvider demo, Cliente cliente) {
     final prestamos = demo.prestamosDeCliente(cliente.id!);
     final widgets = <pw.Widget>[
       _resumen([
@@ -159,7 +159,7 @@ class PdfGenerator {
     return _documento('Estado de cuenta', DateTime.now(), widgets);
   }
 
-  static Future<Uint8List> reporteMora(DemoProvider demo, DateTime fecha) =>
+  static Future<Uint8List> reporteMora(GotaProvider demo, DateTime fecha) =>
       _documento('Reporte de mora', fecha, [
         _resumen([
           ('Préstamos atrasados', '${demo.moras.length}'),
@@ -189,7 +189,7 @@ class PdfGenerator {
         ),
       ]);
 
-  static Future<Uint8List> reporteSemanal(DemoProvider demo, DateTime fecha) {
+  static Future<Uint8List> reporteSemanal(GotaProvider demo, DateTime fecha) {
     final dia = DateTime(fecha.year, fecha.month, fecha.day);
     final inicio = dia.subtract(Duration(days: dia.weekday - DateTime.monday));
     final fin = inicio.add(const Duration(days: 7));
@@ -239,7 +239,7 @@ class PdfGenerator {
     ]);
   }
 
-  static Future<Uint8List> reporteMensual(DemoProvider demo, DateTime fecha) {
+  static Future<Uint8List> reporteMensual(GotaProvider demo, DateTime fecha) {
     final inicio = DateTime(fecha.year, fecha.month, 1);
     final fin = DateTime(fecha.year, fecha.month + 1, 1);
     final pagos = demo.pagos
@@ -471,7 +471,7 @@ class PdfGenerator {
   static bool _mismaFecha(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  static bool _esPenalizacion(DemoProvider demo, int prestamoId, int cuotaId) =>
+  static bool _esPenalizacion(GotaProvider demo, int prestamoId, int cuotaId) =>
       demo
           .cuotasDePrestamo(prestamoId)
           .any((cuota) => cuota.id == cuotaId && cuota.esPenalizacion);

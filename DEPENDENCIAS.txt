@@ -49,9 +49,17 @@ Verificar codigo:
 Compilar web:
     flutter build web --release
 
-Compilar APK Android (requiere arreglar primero la configuracion Gradle actual
-y configurar una clave de firma release propia):
-    flutter build apk --release
+Compilar APK ofuscado para pruebas en PowerShell:
+    $env:JAVA_HOME = "$env:ProgramFiles\Android\Android Studio\jbr"
+    $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+    flutter build apk --release --obfuscate --split-debug-info=build/symbols
+
+Salida:
+    build/app/outputs/flutter-apk/app-release.apk
+
+El build actual usa la clave debug de Android. Configurar una clave release
+propia antes de distribuir el APK a clientes. Guardar build/symbols para
+diagnosticar errores del codigo ofuscado; no publicar esos simbolos.
 
 DESPLIEGUE WEB CON DOCKER
 -------------------------
@@ -68,5 +76,5 @@ seleccionar Docker como runtime y usar la raiz del repositorio como contexto.
 Render inyecta PORT (por defecto 10000) y Nginx escucha ese puerto.
 
 Para publicar en un dominio, configurar HTTPS en el proxy inverso o proveedor
-de hosting. Esta interfaz usa datos de demostracion en memoria; no es todavia
-un servicio de produccion con persistencia compartida.
+de hosting. La persistencia SQLite actual funciona en Android; el target Web
+no incluye un adaptador SQLite de navegador ni backend compartido.

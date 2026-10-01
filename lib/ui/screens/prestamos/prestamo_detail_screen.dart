@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../data/models/prestamo.dart';
-import '../../../logic/providers/demo_provider.dart';
+import '../../../logic/providers/gota_provider.dart';
 import '../../widgets/cuota_row.dart';
 import '../../widgets/payment_bottom_sheet.dart';
 
@@ -15,7 +15,7 @@ class PrestamoDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final demo = context.watch<DemoProvider>();
+    final demo = context.watch<GotaProvider>();
     final prestamo = demo.prestamoPorId(prestamoId);
     if (prestamo == null) {
       return const Scaffold(
@@ -205,7 +205,7 @@ class PrestamoDetailScreen extends StatelessWidget {
 
   static void _mostrarHistorial(
     BuildContext context,
-    DemoProvider demo,
+    GotaProvider demo,
     Prestamo prestamo,
   ) {
     final pagos = demo.pagosDePrestamo(prestamo.id!);

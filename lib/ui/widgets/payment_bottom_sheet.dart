@@ -7,7 +7,7 @@ import '../../core/utils/date_utils.dart';
 import '../../data/models/cliente.dart';
 import '../../data/models/cuota.dart';
 import '../../data/models/prestamo.dart';
-import '../../logic/providers/demo_provider.dart';
+import '../../logic/providers/gota_provider.dart';
 
 class PaymentBottomSheet extends StatefulWidget {
   const PaymentBottomSheet({
@@ -166,10 +166,10 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
     if (seleccion != null) setState(() => _fecha = seleccion);
   }
 
-  void _confirmar() {
+  Future<void> _confirmar() async {
     final monto = double.tryParse(_montoController.text.replaceAll(',', '.'));
     try {
-      context.read<DemoProvider>().registrarPago(
+      await context.read<GotaProvider>().registrarPago(
         prestamoId: widget.prestamo.id!,
         cuotaId: widget.cuota.id!,
         monto: monto ?? 0,
@@ -179,12 +179,14 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
             ? null
             : _notaController.text.trim(),
       );
+        if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
       messenger.showSnackBar(
         const SnackBar(content: Text('Pago registrado correctamente')),
       );
     } on Object catch (error) {
+      if (!mounted) return;
       setState(
         () => _error = error.toString().replaceFirst('ArgumentError: ', ''),
       );

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_prestamos/logic/providers/demo_provider.dart';
+import 'package:flutter_prestamos/logic/providers/gota_provider.dart';
 import 'package:flutter_prestamos/main.dart';
 
 void main() {
-  testWidgets('muestra dashboard y navega entre las secciones principales', (
+  testWidgets('muestra carga SQLite y navega por las secciones principales', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -15,26 +15,23 @@ void main() {
 
     await tester.pumpWidget(
       ChangeNotifierProvider(
-        create: (_) => DemoProvider(fechaDemo: DateTime(2026, 9, 28)),
+        create: (_) => GotaProvider()..cargando = false,
         child: const GotaControlApp(),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('GotaControl'), findsOneWidget);
     expect(find.text('Ganancia de hoy'), findsOneWidget);
 
     await tester.tap(find.text('Nuevo').last);
     await tester.pumpAndSettle();
-    expect(find.text('Capital prestado'), findsOneWidget);
+    expect(
+      find.text('Primero agrega un cliente para continuar.'),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Clientes').last);
     await tester.pumpAndSettle();
     expect(find.text('Buscar por nombre, cédula o teléfono'), findsOneWidget);
-    await tester.tap(find.text('María Fernanda Rojas').first);
-    await tester.pumpAndSettle();
-    expect(find.text('Detalle del préstamo'), findsOneWidget);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Reportes').last);
     await tester.pumpAndSettle();
