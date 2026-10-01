@@ -139,43 +139,47 @@ class _ClientesScreenState extends State<ClientesScreen> {
 
   Widget _clienteListTile(Cliente cliente, GotaProvider demo) {
     final prestamos = demo.prestamosDeCliente(cliente.id!);
-    final prestamo = prestamos.isEmpty ? null : prestamos.last;
-    final cuotaSiguiente = prestamo == null
-        ? null
-        : demo
-              .cuotasDePrestamo(prestamo.id!)
-              .where((cuota) => cuota.estado != 'PAGADA')
-              .firstOrNull;
-    final estado = prestamo?.estado ?? 'PENDIENTE';
+    final prestamosActivos = prestamos
+        .where(
+          (prestamo) =>
+              prestamo.estado == 'ACTIVO' || prestamo.estado == 'MORA',
+        )
+        .toList();
+    final prestamo = prestamos.firstOrNull;
+    final saldoPendiente = prestamosActivos.fold(
+      0.0,
+      (saldo, prestamo) => saldo + prestamo.saldoPendiente,
+    );
+    final cuotasPendientes =
+        prestamosActivos
+            .where((prestamo) => prestamo.id != null)
+            .expand((prestamo) => demo.cuotasDePrestamo(prestamo.id!))
+            .where((cuota) => cuota.estado != 'PAGADA')
+            .toList()
+          ..sort((a, b) => a.fechaVencimiento.compareTo(b.fechaVencimiento));
+    final cuotaSiguiente = cuotasPendientes.firstOrNull;
+    final estado = prestamosActivos.any((prestamo) => prestamo.estado == 'MORA')
+        ? 'MORA'
+        : prestamosActivos.isNotEmpty
+        ? 'ACTIVO'
+        : prestamos.isNotEmpty &&
+              prestamos.every((prestamo) => prestamo.estado == 'PAGADO')
+        ? 'PAGADO'
+        : 'PENDIENTE';
     final card = ClienteCard(
       cliente: cliente,
-      saldoPendiente: prestamo?.saldoPendiente ?? 0,
+      saldoPendiente: saldoPendiente,
       estado: estado,
       proximoPago: cuotaSiguiente?.fechaVencimiento,
+      cantidadPrestamosActivos: prestamosActivos.length,
       onTap: prestamo == null ? null : () => _abrirPrestamo(prestamo),
+      onEliminar: () => _eliminarCliente(cliente),
     );
     return Dismissible(
       key: ValueKey('cliente-${cliente.id}'),
       direction: DismissDirection.endToStart,
-      confirmDismiss: (_) => showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Desactivar cliente'),
-          content: Text('¿Deseas ocultar a ${cliente.nombre} de la lista?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Desactivar'),
-            ),
-          ],
-        ),
-      ),
-      onDismissed: (_) =>
-          context.read<GotaProvider>().eliminarCliente(cliente.id!),
+      confirmDismiss: (_) => _confirmarEliminacion(cliente),
+      onDismissed: (_) => _desactivarCliente(cliente),
       background: Container(
         alignment: Alignment.centerRight,
         margin: const EdgeInsets.only(bottom: 10),
@@ -188,6 +192,70 @@ class _ClientesScreenState extends State<ClientesScreen> {
       ),
       child: card,
     );
+  }
+
+  Future<bool> _confirmarEliminacion(Cliente cliente) async {
+    final provider = context.read<GotaProvider>();
+    final estaPazYSalvo = await provider.clienteEstaPazYSalvo(cliente.id!);
+    if (!mounted) return false;
+
+    if (!estaPazYSalvo) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('No se puede eliminar'),
+          content: Text(
+            'No se puede eliminar a ${cliente.nombre} porque tiene préstamos activos. Debe estar a paz y salvo.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      return false;
+    }
+
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Eliminar cliente'),
+            content: Text(
+              '¿Deseas eliminar a ${cliente.nombre}? Se conservará el historial financiero.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Eliminar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _eliminarCliente(Cliente cliente) async {
+    if (!await _confirmarEliminacion(cliente) || !mounted) return;
+    await _desactivarCliente(cliente);
+  }
+
+  Future<void> _desactivarCliente(Cliente cliente) async {
+    try {
+      await context.read<GotaProvider>().eliminarCliente(cliente.id!);
+    } on Object catch (error) {
+      if (!mounted) return;
+      await context.read<GotaProvider>().cargarDatos();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   Future<void> _agregarCliente() async {

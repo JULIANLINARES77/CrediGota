@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_utils.dart';
+import '../../../core/utils/miles_input_formatter.dart';
 import '../../../data/models/prestamo.dart';
 import '../../../logic/providers/gota_provider.dart';
 import '../../../logic/services/calculadora_service.dart';
@@ -23,6 +26,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
   final _interes = TextEditingController(text: '20');
   final _cuotas = TextEditingController(text: '24');
   final _calculadora = const CalculadoraService();
+  Timer? _debounce;
   int? _clienteId;
   String _frecuencia = CalculadoraService.frecuenciaLunesMiercolesViernes;
   final Set<int> _dias = {DateTime.monday, DateTime.wednesday, DateTime.friday};
@@ -46,6 +50,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _capital.dispose();
     _interes.dispose();
     _cuotas.dispose();
@@ -115,51 +120,45 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _capital,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
+                  keyboardType: TextInputType.number,
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                    LengthLimitingTextInputFormatter(15),
+                    const MilesInputFormatter(maxDigits: 12),
                   ],
                   decoration: const InputDecoration(
                     labelText: 'Capital prestado',
                     prefixText: '\$ ',
-                    hintText: '1.000.000',
+                    hintText: '1.000.000 (de 10.000 a 100.000.000)',
                   ),
-                  validator: (valor) => (_parsear(valor) ?? 0) <= 0
-                      ? 'Ingresa un capital mayor que cero'
-                      : null,
+                  validator: _validarCapital,
                 ),
                 const SizedBox(height: 12),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final campoInteres = TextFormField(
                       controller: _interes,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
+                      keyboardType: TextInputType.number,
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(3),
                       ],
                       decoration: const InputDecoration(
                         labelText: 'Interés (%)',
                         suffixText: '%',
                       ),
-                      validator: (valor) => (_parsear(valor) ?? -1) < 0
-                          ? 'Revisa el interés'
-                          : null,
+                      validator: _validarInteres,
                     );
                     final campoCuotas = TextFormField(
                       controller: _cuotas,
                       keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(3),
+                      ],
                       decoration: const InputDecoration(
                         labelText: 'Número de cuotas',
                       ),
-                      validator: (valor) =>
-                          (int.tryParse(valor ?? '') ?? 0) <= 0
-                          ? 'Debe ser mayor que cero'
-                          : null,
+                      validator: _validarCuotas,
                     );
                     return constraints.maxWidth < 430
                         ? Column(
@@ -317,16 +316,51 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
   double? _parsear(String? valor) =>
       double.tryParse((valor ?? '').trim().replaceAll(',', '.'));
 
+  double? _parsearCapital(String? valor) =>
+      double.tryParse((valor ?? '').replaceAll('.', '').trim());
+
+  String? _validarCapital(String? valor) {
+    final capital = _parsearCapital(valor);
+    if (capital == null ||
+        !capital.isFinite ||
+        capital < 10000 ||
+        capital > 100000000) {
+      return 'El capital debe estar entre \$10.000 y \$100.000.000';
+    }
+    return null;
+  }
+
+  String? _validarInteres(String? valor) {
+    final interes = _parsear(valor);
+    if (interes == null || !interes.isFinite || interes < 0 || interes > 100) {
+      return 'El interés debe estar entre 0% y 100%';
+    }
+    return null;
+  }
+
+  String? _validarCuotas(String? valor) {
+    final cantidad = int.tryParse(valor ?? '');
+    if (cantidad == null || cantidad < 1 || cantidad > 365) {
+      return 'El número de cuotas debe estar entre 1 y 365';
+    }
+    return null;
+  }
+
   ResultadoCalculoPrestamo? _calculoPreview() {
-    final capital = _parsear(_capital.text);
+    final capital = _parsearCapital(_capital.text);
     final interes = _parsear(_interes.text);
     final cantidad = int.tryParse(_cuotas.text);
     if (capital == null ||
         interes == null ||
         cantidad == null ||
-        capital <= 0 ||
+        !capital.isFinite ||
+        capital < 10000 ||
+        capital > 100000000 ||
+        !interes.isFinite ||
         interes < 0 ||
-        cantidad <= 0) {
+        interes > 100 ||
+        cantidad < 1 ||
+        cantidad > 365) {
       return null;
     }
     try {
@@ -335,7 +369,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
         porcentajeInteres: interes,
         numCuotas: cantidad,
       );
-    } on ArgumentError {
+    } on Object {
       return null;
     }
   }
@@ -343,7 +377,8 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
   List<DateTime>? _fechasPreview() {
     final cantidad = int.tryParse(_cuotas.text);
     if (cantidad == null ||
-        cantidad <= 0 ||
+        cantidad < 1 ||
+        cantidad > 365 ||
         (_frecuencia == CalculadoraService.frecuenciaPersonalizada &&
             _dias.isEmpty)) {
       return null;
@@ -358,13 +393,16 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
             ? _dias.toList()
             : null,
       );
-    } on ArgumentError {
+    } on Object {
       return null;
     }
   }
 
   void _actualizar() {
-    if (mounted) setState(() {});
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _crearPrestamo(GotaProvider demo) async {
@@ -380,7 +418,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
     try {
       prestamo = await demo.crearPrestamo(
         clienteId: _clienteId!,
-        capital: _parsear(_capital.text)!,
+        capital: _parsearCapital(_capital.text)!,
         porcentajeInteres: _parsear(_interes.text)!,
         numCuotas: int.parse(_cuotas.text),
         frecuencia: _frecuencia,

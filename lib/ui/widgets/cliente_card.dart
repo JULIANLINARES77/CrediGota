@@ -16,6 +16,8 @@ class ClienteCard extends StatelessWidget {
     this.onTap,
     this.onLlamar,
     this.onWhatsApp,
+    this.onEliminar,
+    this.cantidadPrestamosActivos,
   });
 
   final Cliente cliente;
@@ -26,6 +28,8 @@ class ClienteCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLlamar;
   final VoidCallback? onWhatsApp;
+  final VoidCallback? onEliminar;
+  final int? cantidadPrestamosActivos;
 
   Color get _estadoColor => switch (estado) {
     'MORA' => AppColors.error,
@@ -99,6 +103,14 @@ class ClienteCard extends StatelessWidget {
                               fontSize: 11,
                             ),
                           ),
+                        if (cantidadPrestamosActivos != null)
+                          Text(
+                            '$cantidadPrestamosActivos ${cantidadPrestamosActivos == 1 ? 'préstamo activo' : 'préstamos activos'}',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
+                          ),
                       ],
                     ),
                   ],
@@ -132,6 +144,17 @@ class ClienteCard extends StatelessWidget {
                             onWhatsApp ?? () => _whatsapp(cliente.telefono),
                         icon: const Icon(Icons.chat_outlined, size: 19),
                       ),
+                      if (onEliminar != null)
+                        IconButton(
+                          tooltip: 'Eliminar cliente',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: onEliminar,
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            size: 19,
+                            color: AppColors.error,
+                          ),
+                        ),
                     ],
                   ),
                 ],

@@ -28,9 +28,11 @@ flutter build apk --release --obfuscate --split-debug-info=build/symbols
 ```
 
 El APK queda en `build/app/outputs/flutter-apk/app-release.apk`. Actualmente se
-firma con el certificado debug de Android: sirve para pruebas/sideload, pero antes
-de distribuirlo a clientes hay que configurar una clave release propia. Conserva
-`build/symbols` para poder diagnosticar errores de esta compilación ofuscada.
+firma con el certificado debug y conserva el `applicationId` provisional
+`com.example.flutter_prestamos`: sirve para pruebas/sideload, pero antes de
+distribuirlo a clientes hay que definir un identificador definitivo y configurar
+una clave release propia. Conserva `build/symbols` para poder diagnosticar errores
+de esta compilación ofuscada.
 
 ## Docker
 

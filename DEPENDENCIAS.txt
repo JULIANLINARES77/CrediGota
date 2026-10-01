@@ -5,7 +5,7 @@ SDK DE DESARROLLO
 -----------------
 Flutter: 3.44.8 (stable)
 Dart: 3.12.2
-Java para Android: JDK 17
+Java para Android/Gradle: JDK 21 de Android Studio (compila bytecode Java 17)
 Android minSdk: 24 (Android 7.0 Nougat o posterior)
 Android targetSdk del SDK instalado: 36
 
@@ -57,9 +57,11 @@ Compilar APK ofuscado para pruebas en PowerShell:
 Salida:
     build/app/outputs/flutter-apk/app-release.apk
 
-El build actual usa la clave debug de Android. Configurar una clave release
-propia antes de distribuir el APK a clientes. Guardar build/symbols para
-diagnosticar errores del codigo ofuscado; no publicar esos simbolos.
+El build actual usa la clave debug y el applicationId provisional
+com.example.flutter_prestamos. Definir un applicationId definitivo y configurar
+una keystore release antes de distribuir el APK a clientes. Guardar
+build/symbols para diagnosticar errores del codigo ofuscado; no publicar esos
+simbolos.
 
 DESPLIEGUE WEB CON DOCKER
 -------------------------

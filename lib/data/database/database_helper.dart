@@ -214,12 +214,38 @@ class DatabaseHelper {
 
   Future<int> eliminarCliente(int id) async {
     final db = await database;
-    return db.update(
-      DbConstants.tableClientes,
-      {DbConstants.clienteActivo: 0},
-      where: '${DbConstants.columnId} = ?',
-      whereArgs: [id],
+    return db.transaction((transaction) async {
+      final rows = await transaction.rawQuery(
+        'SELECT COUNT(*) AS total FROM ${DbConstants.tablePrestamos} '
+        'WHERE ${DbConstants.prestamoClienteId} = ? '
+        'AND ${DbConstants.prestamoEstado} IN (?, ?)',
+        [id, 'ACTIVO', 'MORA'],
+      );
+      final prestamosAbiertos = (rows.first['total'] as num).toInt();
+      if (prestamosAbiertos > 0) {
+        throw StateError(
+          'No se puede eliminar el cliente porque tiene préstamos activos. '
+          'Debe estar a paz y salvo.',
+        );
+      }
+      return transaction.update(
+        DbConstants.tableClientes,
+        {DbConstants.clienteActivo: 0},
+        where: '${DbConstants.columnId} = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  Future<bool> clienteEstaPazYSalvo(int clienteId) async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS total FROM ${DbConstants.tablePrestamos} '
+      'WHERE ${DbConstants.prestamoClienteId} = ? '
+      'AND ${DbConstants.prestamoEstado} IN (?, ?)',
+      [clienteId, 'ACTIVO', 'MORA'],
     );
+    return (rows.first['total'] as num).toInt() == 0;
   }
 
   Future<int> crearPrestamoConCuotas(

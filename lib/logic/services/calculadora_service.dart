@@ -26,21 +26,27 @@ class CalculadoraService {
     required double porcentajeInteres,
     required int numCuotas,
   }) {
-    if (!capital.isFinite || capital <= 0) {
-      throw ArgumentError.value(capital, 'capital', 'Debe ser mayor que cero.');
+    if (!capital.isFinite || capital < 10000 || capital > 100000000) {
+      throw ArgumentError.value(
+        capital,
+        'capital',
+        'El capital debe estar entre 10000 y 100000000 COP.',
+      );
     }
-    if (!porcentajeInteres.isFinite || porcentajeInteres < 0) {
+    if (!porcentajeInteres.isFinite ||
+        porcentajeInteres < 0 ||
+        porcentajeInteres > 100) {
       throw ArgumentError.value(
         porcentajeInteres,
         'porcentajeInteres',
-        'Debe ser mayor o igual que cero.',
+        'El interés debe estar entre 0% y 100%.',
       );
     }
-    if (numCuotas <= 0) {
+    if (numCuotas < 1 || numCuotas > 365) {
       throw ArgumentError.value(
         numCuotas,
         'numCuotas',
-        'Debe ser mayor que cero.',
+        'El número de cuotas debe estar entre 1 y 365.',
       );
     }
 

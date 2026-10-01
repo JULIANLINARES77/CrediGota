@@ -28,6 +28,8 @@ class PrestamoDetailScreen extends StatelessWidget {
         body: Center(child: Text('No se encontró el cliente.')),
       );
     }
+    final prestamosCliente = demo.prestamosDeCliente(cliente.id!)
+      ..sort((a, b) => b.fechaInicio.compareTo(a.fechaInicio));
     final cuotas = demo.cuotasDePrestamo(prestamoId);
     final pagadas = cuotas.where((cuota) => cuota.estado == 'PAGADA').length;
     final progreso = cuotas.isEmpty ? 0.0 : pagadas / cuotas.length;
@@ -84,6 +86,29 @@ class PrestamoDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               _ResumenPrestamo(prestamo: prestamo),
+              const SizedBox(height: 22),
+              Text(
+                'Historial de préstamos',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ...prestamosCliente.map(
+                (item) => _HistorialPrestamoTile(
+                  prestamo: item,
+                  seleccionado: item.id == prestamo.id,
+                  onTap: item.id == prestamo.id
+                      ? null
+                      : () => Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                PrestamoDetailScreen(prestamoId: item.id!),
+                          ),
+                        ),
+                ),
+              ),
               const SizedBox(height: 18),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -303,6 +328,41 @@ class _ResumenPrestamo extends StatelessWidget {
           ],
         ),
       ],
+    ),
+  );
+}
+
+class _HistorialPrestamoTile extends StatelessWidget {
+  const _HistorialPrestamoTile({
+    required this.prestamo,
+    required this.seleccionado,
+    required this.onTap,
+  });
+
+  final Prestamo prestamo;
+  final bool seleccionado;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    margin: const EdgeInsets.only(bottom: 7),
+    color: seleccionado ? AppColors.elevatedSurface : AppColors.surface,
+    child: ListTile(
+      onTap: onTap,
+      leading: Icon(
+        seleccionado ? Icons.radio_button_checked : Icons.receipt_long_outlined,
+        color: seleccionado ? AppColors.primary : AppColors.textSecondary,
+      ),
+      title: Text(
+        GotaDateUtils.formatearMoneda(prestamo.montoCapital),
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        '${GotaDateUtils.formatearFecha(prestamo.fechaInicio)} · Saldo ${GotaDateUtils.formatearMoneda(prestamo.saldoPendiente)}',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: _EstadoPrestamo(estado: prestamo.estado),
     ),
   );
 }

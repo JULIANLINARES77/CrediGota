@@ -29,17 +29,69 @@ void main() {
       );
       expect(
         () => calculadora.calcularPrestamo(
-          capital: 100,
-          porcentajeInteres: -1,
+          capital: 9999,
+          porcentajeInteres: 20,
           numCuotas: 4,
         ),
         throwsArgumentError,
       );
       expect(
         () => calculadora.calcularPrestamo(
-          capital: 100,
+          capital: 100000001,
+          porcentajeInteres: 20,
+          numCuotas: 4,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => calculadora.calcularPrestamo(
+          capital: 10000,
+          porcentajeInteres: -1,
+          numCuotas: 4,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        calculadora
+            .calcularPrestamo(
+              capital: 10000,
+              porcentajeInteres: 0,
+              numCuotas: 1,
+            )
+            .valorCuota,
+        10000,
+      );
+      expect(
+        calculadora
+            .calcularPrestamo(
+              capital: 100000000,
+              porcentajeInteres: 100,
+              numCuotas: 365,
+            )
+            .montoTotalPagar,
+        200000000,
+      );
+      expect(
+        () => calculadora.calcularPrestamo(
+          capital: 10000,
+          porcentajeInteres: 101,
+          numCuotas: 4,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => calculadora.calcularPrestamo(
+          capital: 10000,
           porcentajeInteres: 20,
           numCuotas: 0,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => calculadora.calcularPrestamo(
+          capital: 10000,
+          porcentajeInteres: 20,
+          numCuotas: 366,
         ),
         throwsArgumentError,
       );

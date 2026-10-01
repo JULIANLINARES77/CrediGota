@@ -57,14 +57,12 @@ class GotaProvider extends ChangeNotifier {
   List<Cuota> get cuotasDeHoy {
     final hoy = _soloFecha(_reloj());
     return List.unmodifiable(
-      _cuotasPorPrestamo.values
-          .expand((cuotas) => cuotas)
-          .where((cuota) {
-            final estadoPrestamo = _prestamoPorId(cuota.prestamoId)?.estado;
-            return cuota.estado != 'PAGADA' &&
-                _mismaFecha(cuota.fechaVencimiento, hoy) &&
-                (estadoPrestamo == 'ACTIVO' || estadoPrestamo == 'MORA');
-          }),
+      _cuotasPorPrestamo.values.expand((cuotas) => cuotas).where((cuota) {
+        final estadoPrestamo = _prestamoPorId(cuota.prestamoId)?.estado;
+        return cuota.estado != 'PAGADA' &&
+            _mismaFecha(cuota.fechaVencimiento, hoy) &&
+            (estadoPrestamo == 'ACTIVO' || estadoPrestamo == 'MORA');
+      }),
     );
   }
 
@@ -165,6 +163,9 @@ class GotaProvider extends ChangeNotifier {
     await _databaseHelper.eliminarCliente(id);
     await cargarDatos();
   }
+
+  Future<bool> clienteEstaPazYSalvo(int clienteId) =>
+      _databaseHelper.clienteEstaPazYSalvo(clienteId);
 
   Future<Prestamo> crearPrestamo({
     required int clienteId,
