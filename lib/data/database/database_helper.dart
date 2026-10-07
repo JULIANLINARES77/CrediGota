@@ -127,6 +127,15 @@ class DatabaseHelper {
         ${DbConstants.configuracionPorcentajeMora} REAL NOT NULL DEFAULT 10,
         ${DbConstants.configuracionDiasGraciaMora} INTEGER NOT NULL DEFAULT 3,
         ${DbConstants.configuracionPinSeguridad} TEXT,
+        ${DbConstants.configuracionPinHash} TEXT,
+        ${DbConstants.configuracionPinIntentosFallidos} INTEGER NOT NULL DEFAULT 0,
+        ${DbConstants.configuracionPinBloqueadoHasta} INTEGER,
+        ${DbConstants.configuracionDireccionNegocio} TEXT,
+        ${DbConstants.configuracionAlertasMora} INTEGER NOT NULL DEFAULT 1,
+        ${DbConstants.configuracionRecordatorioDiario} INTEGER NOT NULL DEFAULT 0,
+        ${DbConstants.configuracionHoraRecordatorio} TEXT NOT NULL DEFAULT '08:00',
+        ${DbConstants.configuracionFrecuenciaRespaldo} TEXT NOT NULL DEFAULT 'daily',
+        ${DbConstants.configuracionUltimoRespaldo} INTEGER,
         ${DbConstants.configuracionMoneda} TEXT NOT NULL DEFAULT 'COP'
       )
       ''',
@@ -147,12 +156,72 @@ class DatabaseHelper {
     for (final statement in statements) {
       await db.execute(statement);
     }
+
+    // Fila base de configuración
+    await db.insert(DbConstants.tableConfiguracion, {
+      DbConstants.configuracionNombreNegocio: 'GotaControl',
+      DbConstants.configuracionPorcentajeMora: 10.0,
+      DbConstants.configuracionDiasGraciaMora: 3,
+      DbConstants.configuracionMoneda: 'COP',
+    });
   }
 
+  /// Migraciones versionadas. Añade un bloque `if (oldVersion < N)` por
+  /// cada nueva versión del esquema y sube [DbConstants.databaseVersion].
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    debugPrint(
-      'GotaControl: migrando base de datos de v$oldVersion a v$newVersion',
-    );
+    debugPrint('GotaControl: migrando base de datos v$oldVersion → v$newVersion');
+
+    if (oldVersion < 2) {
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionPinHash} TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionPinIntentosFallidos} '
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionPinBloqueadoHasta} INTEGER',
+      );
+      await db.update(
+        DbConstants.tableConfiguracion,
+        {DbConstants.configuracionPinSeguridad: null},
+      );
+    }
+    if (oldVersion < 3) {
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionDireccionNegocio} TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionAlertasMora} '
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionRecordatorioDiario} '
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionHoraRecordatorio} '
+        "TEXT NOT NULL DEFAULT '08:00'",
+      );
+    }
+    if (oldVersion < 4) {
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionFrecuenciaRespaldo} '
+        "TEXT NOT NULL DEFAULT 'daily'",
+      );
+      await db.execute(
+        'ALTER TABLE ${DbConstants.tableConfiguracion} '
+        'ADD COLUMN ${DbConstants.configuracionUltimoRespaldo} INTEGER',
+      );
+    }
   }
 
   Future<void> close() async {
@@ -161,6 +230,13 @@ class DatabaseHelper {
     await currentDatabase.close();
     _database = null;
   }
+
+  Future<String> get databaseFilePath async {
+    final directory = await getApplicationSupportDirectory();
+    return join(directory.path, DbConstants.databaseName);
+  }
+
+  // ─────────────────────────── CLIENTES ───────────────────────────
 
   Future<int> insertarCliente(Cliente cliente) async {
     final db = await database;
@@ -247,6 +323,8 @@ class DatabaseHelper {
     );
     return (rows.first['total'] as num).toInt() == 0;
   }
+
+  // ─────────────────────────── PRÉSTAMOS ───────────────────────────
 
   Future<int> crearPrestamoConCuotas(
     Prestamo prestamo,
@@ -336,6 +414,8 @@ class DatabaseHelper {
     return _asDouble(rows.first['total']);
   }
 
+  // ─────────────────────────── CUOTAS ───────────────────────────
+
   Future<List<Cuota>> obtenerCuotasPorPrestamo(int prestamoId) async {
     final db = await database;
     final rows = await db.query(
@@ -398,6 +478,8 @@ class DatabaseHelper {
       whereArgs: [cuota.id],
     );
   }
+
+  // ─────────────────────────── PAGOS ───────────────────────────
 
   Future<int> registrarPago(Pago pago) async {
     if (pago.monto <= 0) {
@@ -563,6 +645,8 @@ class DatabaseHelper {
     return rows.map(Pago.fromMap).toList();
   }
 
+  // ─────────────────────────── DASHBOARD ───────────────────────────
+
   Future<Map<String, dynamic>> obtenerResumenDashboard() async {
     final db = await database;
     final today = _dateKey(DateTime.now());
@@ -621,6 +705,61 @@ class DatabaseHelper {
       'pagos_pendientes_hoy': _asDouble(summary['pagos_pendientes_hoy']),
     };
   }
+
+  // ─────────────────────────── CONFIGURACIÓN ───────────────────────────
+
+  Future<Map<String, Object?>?> obtenerConfiguracion() async {
+    final db = await database;
+    final rows = await db.query(
+      DbConstants.tableConfiguracion,
+      limit: 1,
+    );
+    return rows.isEmpty ? null : Map<String, Object?>.from(rows.first);
+  }
+
+  Future<void> guardarConfiguracion(Map<String, Object?> data) async {
+    final db = await database;
+    final rows = await db.query(
+      DbConstants.tableConfiguracion,
+      columns: [DbConstants.columnId],
+      limit: 1,
+    );
+    final payload = Map<String, Object?>.from(data)
+      ..remove(DbConstants.columnId);
+
+    if (rows.isEmpty) {
+      await db.insert(DbConstants.tableConfiguracion, payload);
+    } else {
+      await db.update(
+        DbConstants.tableConfiguracion,
+        payload,
+        where: '${DbConstants.columnId} = ?',
+        whereArgs: [rows.first[DbConstants.columnId]],
+      );
+    }
+  }
+
+  Future<void> guardarHashPin(String? hash) async {
+    await guardarConfiguracion({
+      DbConstants.configuracionPinHash: hash,
+      DbConstants.configuracionPinSeguridad: null,
+      DbConstants.configuracionPinIntentosFallidos: 0,
+      DbConstants.configuracionPinBloqueadoHasta: null,
+    });
+  }
+
+  Future<void> guardarIntentosFallidosPin({
+    required int intentos,
+    DateTime? bloqueadoHasta,
+  }) async {
+    await guardarConfiguracion({
+      DbConstants.configuracionPinIntentosFallidos: intentos,
+      DbConstants.configuracionPinBloqueadoHasta:
+          bloqueadoHasta?.millisecondsSinceEpoch,
+    });
+  }
+
+  // ─────────────────────────── HELPERS ───────────────────────────
 
   static String _dateKey(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-'

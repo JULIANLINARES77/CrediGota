@@ -8,6 +8,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../data/models/cliente.dart';
 import '../../../logic/providers/gota_provider.dart';
+import '../../../logic/services/calculadora_service.dart';
 import 'pdf_generator.dart';
 
 class ReportesScreen extends StatefulWidget {
@@ -22,6 +23,8 @@ class _ReportesScreenState extends State<ReportesScreen> {
   DateTime _fecha = DateTime.now();
   int? _clienteId;
   bool _vistaPrevia = false;
+  bool _generando = false;
+  Uint8List? _bytesReporte;
 
   static const _reportes = {
     'diario': ('Reporte diario', Icons.today_outlined),
@@ -66,6 +69,7 @@ class _ReportesScreenState extends State<ReportesScreen> {
                       onTap: () => setState(() {
                         _tipo = entrada.key;
                         _vistaPrevia = false;
+                        _bytesReporte = null;
                       }),
                     ),
                 ],
@@ -86,6 +90,7 @@ class _ReportesScreenState extends State<ReportesScreen> {
                   onChanged: (valor) => setState(() {
                     _clienteId = valor;
                     _vistaPrevia = false;
+                    _bytesReporte = null;
                   }),
                 )
               else
@@ -112,7 +117,8 @@ class _ReportesScreenState extends State<ReportesScreen> {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: PdfPreview(
-                      build: (_) => _generarBytes(demo, cliente),
+                      build: (_) async =>
+                          _bytesReporte ?? await _generarBytes(demo, cliente),
                       pdfFileName: 'GotaControl-$_tipo.pdf',
                       canChangeOrientation: false,
                       canChangePageFormat: false,
@@ -126,9 +132,13 @@ class _ReportesScreenState extends State<ReportesScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () async => PdfGenerator.imprimir(
-                          await _generarBytes(demo, cliente),
-                        ),
+                        onPressed: _generando
+                            ? null
+                            : () => _ejecutarAccion(
+                                () async => PdfGenerator.imprimir(
+                                  await _generarBytes(demo, cliente),
+                                ),
+                              ),
                         icon: const Icon(Icons.print_outlined),
                         label: const Text('Imprimir / guardar'),
                       ),
@@ -136,10 +146,14 @@ class _ReportesScreenState extends State<ReportesScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: () async => PdfGenerator.compartir(
-                          await _generarBytes(demo, cliente),
-                          nombre: 'GotaControl-$_tipo.pdf',
-                        ),
+                        onPressed: _generando
+                            ? null
+                            : () => _ejecutarAccion(
+                                () async => PdfGenerator.compartir(
+                                  await _generarBytes(demo, cliente),
+                                  nombre: 'GotaControl-$_tipo.pdf',
+                                ),
+                              ),
                         icon: const Icon(Icons.share_outlined),
                         label: const Text('Compartir'),
                       ),
@@ -148,15 +162,19 @@ class _ReportesScreenState extends State<ReportesScreen> {
                 ),
               ] else
                 FilledButton.icon(
-                  onPressed: _tipo == 'cliente' && cliente == null
+                  onPressed: _generando ||
+                          (_tipo == 'cliente' && cliente == null)
                       ? null
-                      : () => setState(() => _vistaPrevia = true),
+                      : () => _crearVistaPrevia(demo, cliente),
                   icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('Vista previa PDF'),
+                  label: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      _generando ? 'Generando reporte...' : 'Vista previa PDF',
+                    ),
                   ),
                 ),
+              if (_generando) const LinearProgressIndicator(),
             ],
           ),
         ),
@@ -175,8 +193,46 @@ class _ReportesScreenState extends State<ReportesScreen> {
       setState(() {
         _fecha = fecha;
         _vistaPrevia = false;
+        _bytesReporte = null;
       });
     }
+  }
+
+  Future<void> _crearVistaPrevia(
+    GotaProvider demo,
+    Cliente? cliente,
+  ) async {
+    setState(() => _generando = true);
+    try {
+      final bytes = await _generarBytes(demo, cliente);
+      if (!mounted) return;
+      setState(() {
+        _bytesReporte = bytes;
+        _vistaPrevia = true;
+      });
+    } on Object catch (error) {
+      _mostrarError('No se pudo generar el reporte: $error');
+    } finally {
+      if (mounted) setState(() => _generando = false);
+    }
+  }
+
+  Future<void> _ejecutarAccion(Future<void> Function() accion) async {
+    setState(() => _generando = true);
+    try {
+      await accion();
+    } on Object catch (error) {
+      _mostrarError('No se pudo completar la acción del reporte: $error');
+    } finally {
+      if (mounted) setState(() => _generando = false);
+    }
+  }
+
+  void _mostrarError(String mensaje) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensaje)),
+    );
   }
 
   Future<Uint8List> _generarBytes(GotaProvider demo, Cliente? cliente) =>
@@ -256,21 +312,52 @@ class _ResumenPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final periodo = _periodo(tipo, fecha);
+    final pagosPeriodo = demo.pagos
+        .where(
+          (pago) =>
+              !pago.fechaHora.isBefore(periodo.$1) &&
+              pago.fechaHora.isBefore(periodo.$2),
+        )
+        .toList();
+    final recaudoPeriodo = pagosPeriodo.fold(
+      0.0,
+      (total, pago) => total + pago.monto,
+    );
+    final gananciaPeriodo = pagosPeriodo.fold(0.0, (total, pago) {
+      final prestamo = demo.prestamoPorId(pago.prestamoId);
+      final esPenalizacion = demo
+          .cuotasDePrestamo(pago.prestamoId)
+          .any((cuota) => cuota.id == pago.cuotaId && cuota.esPenalizacion);
+      if (prestamo == null || esPenalizacion) return total;
+      return total +
+          const CalculadoraService().calcularGananciaProporcional(
+            montoPagado: pago.monto,
+            totalPagar: prestamo.montoTotalPagar,
+            interesTotal: prestamo.montoInteres,
+          );
+    });
     final filas = switch (tipo) {
       'diario' => [
-        ('Recaudo', GotaDateUtils.formatearMoneda(demo.recaudadoHoy)),
-        ('Ganancia', GotaDateUtils.formatearMoneda(demo.gananciaHoy)),
-        ('Pagos', '${demo.pagos.length}'),
+        ('Recaudo', GotaDateUtils.formatearMoneda(recaudoPeriodo)),
+        ('Ganancia', GotaDateUtils.formatearMoneda(gananciaPeriodo)),
+        ('Pagos', '${pagosPeriodo.length}'),
       ],
       'semanal' => [
-        ('Semana de', GotaDateUtils.formatearFecha(fecha)),
-        ('Recaudo', GotaDateUtils.formatearMoneda(demo.recaudadoHoy)),
-        ('Pagos', '${demo.pagos.length}'),
+        (
+          'Período',
+          '${GotaDateUtils.formatearFecha(periodo.$1)} - '
+              '${GotaDateUtils.formatearFecha(periodo.$2.subtract(const Duration(days: 1)))}',
+        ),
+        ('Recaudo', GotaDateUtils.formatearMoneda(recaudoPeriodo)),
+        ('Ganancia', GotaDateUtils.formatearMoneda(gananciaPeriodo)),
+        ('Pagos', '${pagosPeriodo.length}'),
       ],
       'mensual' => [
         ('Mes', DateFormatUtils.mes(fecha)),
-        ('Operaciones registradas', '${demo.pagos.length}'),
-        ('Interés estimado', GotaDateUtils.formatearMoneda(demo.gananciaHoy)),
+        ('Recaudo', GotaDateUtils.formatearMoneda(recaudoPeriodo)),
+        ('Operaciones registradas', '${pagosPeriodo.length}'),
+        ('Interés recibido', GotaDateUtils.formatearMoneda(gananciaPeriodo)),
       ],
       'mora' => [
         ('Préstamos atrasados', '${demo.moras.length}'),
@@ -343,6 +430,24 @@ class _ResumenPreview extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  (DateTime, DateTime) _periodo(String tipo, DateTime fecha) {
+    final inicioDia = DateTime(fecha.year, fecha.month, fecha.day);
+    return switch (tipo) {
+      'diario' => (inicioDia, inicioDia.add(const Duration(days: 1))),
+      'semanal' => (
+        inicioDia.subtract(Duration(days: inicioDia.weekday - DateTime.monday)),
+        inicioDia
+            .subtract(Duration(days: inicioDia.weekday - DateTime.monday))
+            .add(const Duration(days: 7)),
+      ),
+      'mensual' => (
+        DateTime(fecha.year, fecha.month, 1),
+        DateTime(fecha.year, fecha.month + 1, 1),
+      ),
+      _ => (DateTime(1970), DateTime(1970)),
+    };
   }
 }
 

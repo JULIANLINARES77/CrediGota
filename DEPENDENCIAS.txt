@@ -30,6 +30,20 @@ sqflite: ^2.4.4
 timezone: ^0.11.1
 url_launcher: ^6.3.2
 
+DEPENDENCIAS NATIVAS ANDROID
+---------------------------
+androidx.work:work-runtime-ktx:2.10.1
+androidx.documentfile:documentfile:1.0.1
+
+RESPALDO LOCAL ANDROID
+----------------------
+Android 10 o posterior: la app usa MediaStore para guardar automáticamente
+en Descargas/GotaControl, fuera del almacenamiento privado de la aplicación.
+En el primer inicio tras reinstalar, se valida y restaura la copia válida más
+reciente antes de abrir SQLite. Android 7–9 requiere elegir una carpeta mediante
+el selector SAF; después de reinstalar hay que volver a conceder acceso e
+importar la copia manualmente.
+
 DEPENDENCIAS DE DESARROLLO
 --------------------------
 flutter_test: SDK Flutter
@@ -57,11 +71,10 @@ Compilar APK ofuscado para pruebas en PowerShell:
 Salida:
     build/app/outputs/flutter-apk/app-release.apk
 
-El build actual usa la clave debug y el applicationId provisional
-com.example.flutter_prestamos. Definir un applicationId definitivo y configurar
-una keystore release antes de distribuir el APK a clientes. Guardar
-build/symbols para diagnosticar errores del codigo ofuscado; no publicar esos
-simbolos.
+Si no existe android/key.properties, el build usa la clave debug y el
+applicationId com.ingeniumcode.gotacontrol. Configurar una keystore release
+antes de distribuir el APK a clientes. Guardar build/symbols para diagnosticar
+errores del codigo ofuscado; no publicar esos simbolos.
 
 DESPLIEGUE WEB CON DOCKER
 -------------------------

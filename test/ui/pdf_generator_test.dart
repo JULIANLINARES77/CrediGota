@@ -3,6 +3,8 @@ import 'package:flutter_prestamos/logic/providers/gota_provider.dart';
 import 'package:flutter_prestamos/ui/screens/reportes/pdf_generator.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test(
     'genera bytes PDF para los reportes diario, semanal, mora y mensual',
     () async {
@@ -13,6 +15,7 @@ void main() {
         await PdfGenerator.reporteSemanal(demo, fecha),
         await PdfGenerator.reporteMora(demo, fecha),
         await PdfGenerator.reporteMensual(demo, fecha),
+        await PdfGenerator.respaldoCompleto(demo),
       ];
 
       for (final documento in documentos) {

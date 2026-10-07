@@ -16,6 +16,53 @@ disponible; no usar la versión Web para registrar operaciones reales.
 
 Para probar la interfaz web sin persistencia, aún no hay un modo mock separado.
 
+## Respaldos locales y recuperación
+
+En Android 10 o posterior, GotaControl crea automáticamente
+`Descargas/GotaControl` en el primer inicio y guarda allí las copias completas de
+SQLite. Esa carpeta está fuera del almacenamiento privado de la app y permanece
+al desinstalarla. Android elimina el permiso privado de acceso al reinstalar,
+por lo que, si la base local no existe o está vacía, la app solicita elegir con
+el selector seguro del sistema la carpeta `GotaControl` que contiene los
+respaldos (o su carpeta principal). Antes de abrir SQLite busca, valida y
+restaura la copia más reciente con datos. Si se cancela el selector, se muestra
+un aviso y se puede volver a importar desde Ajustes. Los respaldos automáticos
+no se crean mientras no existan clientes, préstamos, cuotas ni pagos, para
+evitar que una base vacía tape datos recuperables.
+
+En Android 7–9 se mantiene el selector SAF para configurar la carpeta; tras
+reinstalar, vuelve a conceder acceso e importa el archivo `.db` desde Ajustes.
+En cualquier versión también puedes importar manualmente. La importación valida
+integridad y versión, pide confirmación, conserva una copia preventiva y revierte
+la sustitución si falla.
+
+Se puede programar el respaldo en segundo plano diariamente, semanalmente o cada
+15 días. Android WorkManager ejecuta estas tareas de forma eventual, por lo que
+ahorro de batería, políticas del fabricante o detención forzada pueden
+retrasarlas. Se guardan las 30 copias automáticas más recientes; las copias
+manuales y las creadas antes de importar no se borran. Crear una copia manual
+sigue disponible en Ajustes.
+
+Desde Ajustes también se puede imprimir/guardar un PDF de todos los clientes,
+préstamos, cuotas y pagos, o compartir cuatro CSV separados para abrirlos en una
+hoja de cálculo. En Reportes, los resúmenes diario, semanal y mensual siguen el
+período elegido, igual que el PDF. Los archivos exportados y la base SQLite
+contienen datos financieros y personales; la carpeta Descargas es accesible al
+usuario del dispositivo. El respaldo no está cifrado.
+
+Los límites de Ajustes se validan en la interfaz y en el proveedor local: nombre
+de negocio obligatorio (250 caracteres), teléfono opcional (15), dirección
+opcional (250), mora entre 0 y 100 % y días de gracia entre 0 y 365.
+
+## PIN de seguridad
+
+En Android, el PIN local se valida con bcrypt (factor de trabajo 12) mediante
+`jBCrypt`; solo el hash se guarda en SQLite. El cálculo se ejecuta fuera del hilo
+de interfaz. Esto no es autenticación de servidor: quien obtenga una copia de la
+base de datos puede intentar adivinar el PIN fuera de la aplicación. No almacenes
+datos sincronizados ni consideres el PIN un sustituto del cifrado del dispositivo
+y de copias de seguridad protegidas.
+
 ## APK Android de prueba
 
 En PowerShell, si `JAVA_HOME` apunta a una carpeta inexistente, usa el JDK incluido
@@ -27,12 +74,12 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 flutter build apk --release --obfuscate --split-debug-info=build/symbols
 ```
 
-El APK queda en `build/app/outputs/flutter-apk/app-release.apk`. Actualmente se
-firma con el certificado debug y conserva el `applicationId` provisional
-`com.example.flutter_prestamos`: sirve para pruebas/sideload, pero antes de
-distribuirlo a clientes hay que definir un identificador definitivo y configurar
-una clave release propia. Conserva `build/symbols` para poder diagnosticar errores
-de esta compilación ofuscada.
+El APK queda en `build/app/outputs/flutter-apk/app-release.apk`. Si no existe
+`android/key.properties`, se firma con el certificado debug y no debe publicarse
+como una versión de producción. El identificador de aplicación es
+`com.ingeniumcode.gotacontrol`; configúralo de forma definitiva antes de publicar.
+Conserva `build/symbols` para poder diagnosticar errores de esta compilación
+ofuscada.
 
 ## Docker
 

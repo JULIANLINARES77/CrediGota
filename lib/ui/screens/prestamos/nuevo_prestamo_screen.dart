@@ -11,7 +11,7 @@ import '../../../data/models/prestamo.dart';
 import '../../../logic/providers/gota_provider.dart';
 import '../../../logic/services/calculadora_service.dart';
 import '../../widgets/resumen_card.dart';
-import 'prestamo_detail_screen.dart';
+import 'prestamos_cliente_screen.dart';
 
 class NuevoPrestamoScreen extends StatefulWidget {
   const NuevoPrestamoScreen({super.key});
@@ -27,6 +27,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
   final _cuotas = TextEditingController(text: '24');
   final _calculadora = const CalculadoraService();
   Timer? _debounce;
+  bool _creandoPrestamo = false;
   int? _clienteId;
   String _frecuencia = CalculadoraService.frecuenciaLunesMiercolesViernes;
   final Set<int> _dias = {DateTime.monday, DateTime.wednesday, DateTime.friday};
@@ -91,6 +92,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
                             labelText: 'Cliente',
                           ),
                           items: demo.clientes
+                              .where((cliente) => cliente.id != null)
                               .map(
                                 (cliente) => DropdownMenuItem(
                                   value: cliente.id,
@@ -296,13 +298,21 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
                   ),
                 const SizedBox(height: 22),
                 FilledButton.icon(
-                  onPressed: demo.clientes.isEmpty
+                  onPressed: demo.clientes.isEmpty || _creandoPrestamo
                       ? null
                       : () => _crearPrestamo(demo),
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    child: Text('Crear préstamo'),
+                  icon: _creandoPrestamo
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add_circle_outline),
+                  label: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Text(
+                      _creandoPrestamo ? 'Guardando...' : 'Crear préstamo',
+                    ),
                   ),
                 ),
               ],
@@ -406,7 +416,14 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
   }
 
   Future<void> _crearPrestamo(GotaProvider demo) async {
+    if (_creandoPrestamo) return;
     if (!_formKey.currentState!.validate()) return;
+    if (_clienteId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona un cliente.')),
+      );
+      return;
+    }
     if (_frecuencia == CalculadoraService.frecuenciaPersonalizada &&
         _dias.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -414,7 +431,9 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
       );
       return;
     }
+
     final Prestamo prestamo;
+    setState(() => _creandoPrestamo = true);
     try {
       prestamo = await demo.crearPrestamo(
         clienteId: _clienteId!,
@@ -429,71 +448,114 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
       );
     } on Object catch (error) {
       if (!mounted) return;
+      setState(() => _creandoPrestamo = false);
+      final mensaje = error
+          .toString()
+          .replaceFirst('ArgumentError: ', '')
+          .replaceFirst('StateError: ', '');
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      ).showSnackBar(SnackBar(content: Text(mensaje)));
       return;
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Préstamo creado.')));
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => PrestamoDetailScreen(prestamoId: prestamo.id!),
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✅ Préstamo creado correctamente'),
+        duration: Duration(milliseconds: 1400),
       ),
     );
+    await Future<void>.delayed(const Duration(milliseconds: 1400));
+    if (!mounted) return;
+    final clienteId = prestamo.clienteId;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => PrestamosClienteScreen(clienteId: clienteId),
+      ),
+    );
+    if (mounted) {
+      setState(() => _creandoPrestamo = false);
+      _capital.clear();
+    }
   }
 
   Future<void> _crearClienteRapido() async {
     final nombre = TextEditingController();
     final telefono = TextEditingController();
-    final confirmado = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Nuevo cliente'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nombre,
-              decoration: const InputDecoration(labelText: 'Nombre'),
+
+    try {
+      final confirmado = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Nuevo cliente'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nombre,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Nombre'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: telefono,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Teléfono'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: telefono,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Teléfono'),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Guardar'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) {
+      );
+
+      if (!mounted) return;
+      if (confirmado != true) return;
+
+      if (nombre.text.trim().isEmpty || telefono.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nombre y teléfono son obligatorios.')),
+        );
+        return;
+      }
+
+      try {
+        final demo = context.read<GotaProvider>();
+        await demo.agregarCliente(
+          nombre: nombre.text,
+          telefono: telefono.text,
+        );
+        if (!mounted) return;
+        final ultimo = demo.clientes.isEmpty ? null : demo.clientes.last.id;
+        if (ultimo != null) {
+          setState(() => _clienteId = ultimo);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cliente guardado correctamente.')),
+        );
+      } on Object catch (error) {
+        if (!mounted) return;
+        final mensaje = error
+            .toString()
+            .replaceFirst('ArgumentError: ', '')
+            .replaceFirst('StateError: ', '');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(mensaje)));
+      }
+    } finally {
       nombre.dispose();
       telefono.dispose();
-      return;
     }
-    if (confirmado == true &&
-        nombre.text.trim().isNotEmpty &&
-        telefono.text.trim().isNotEmpty) {
-      final demo = context.read<GotaProvider>();
-      await demo.agregarCliente(nombre: nombre.text, telefono: telefono.text);
-      setState(() => _clienteId = demo.clientes.last.id);
-    }
-    nombre.dispose();
-    telefono.dispose();
   }
 }
 

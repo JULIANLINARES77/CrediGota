@@ -1,23 +1,107 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/constants/app_colors.dart';
+import 'core/constants/db_constants.dart';
 import 'core/constants/app_strings.dart';
-import 'data/database/database_helper.dart';
 import 'logic/providers/gota_provider.dart';
+import 'logic/services/local_backup_service.dart';
 import 'logic/services/notificacion_service.dart';
 import 'ui/screens/main_shell.dart';
+import 'ui/widgets/pin_security_gate.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  if (!kIsWeb) await DatabaseHelper.instance.database;
-  await NotificacionService.instance.inicializarNotificaciones();
-  runApp(
-    ChangeNotifierProvider(
-      create: (_) => GotaProvider()..cargarDatos(),
-      child: const GotaControlApp(),
-    ),
+void main() {
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // Captura errores del framework Flutter (build, layout, paint, etc.)
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.presentError(details);
+        debugPrint('GotaControl [FlutterError]: ${details.exception}');
+        debugPrintStack(stackTrace: details.stack);
+      };
+      ErrorWidget.builder = (_) => const Material(
+        color: AppColors.background,
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Ocurrió un error al mostrar esta pantalla. Reinicia la app o '
+              'vuelve a intentarlo.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textPrimary),
+            ),
+          ),
+        ),
+      );
+
+      // Captura errores asíncronos de la plataforma (Android/iOS)
+      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        debugPrint('GotaControl [PlatformDispatcher]: $error');
+        debugPrintStack(stackTrace: stack);
+        return true;
+      };
+
+      final provider = GotaProvider();
+      var falloRecuperacionAutomatica = false;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          await LocalBackupService.instance.restoreLatestBackupIfMissing();
+        } on Object catch (error, stackTrace) {
+          falloRecuperacionAutomatica = true;
+          debugPrint(
+            'GotaControl: no se pudo recuperar el respaldo previo: $error',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+        }
+      }
+      await provider.cargarDatos();
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          final estadoRespaldo = await LocalBackupService.instance.status();
+          if (falloRecuperacionAutomatica ||
+              (estadoRespaldo.lastError != null &&
+                  estadoRespaldo.lastSuccess == null)) {
+            provider.mostrarAvisoRespaldoInicio(
+              'No se pudo validar la copia más reciente. No se programó una '
+              'copia nueva para proteger los respaldos existentes. Revisa '
+              'Ajustes → Respaldo e importa una copia válida.',
+            );
+          } else {
+            final frecuencia = BackupFrequency.fromValue(
+              provider.configuracion?[DbConstants
+                  .configuracionFrecuenciaRespaldo],
+            );
+            await LocalBackupService.instance.configureSchedule(frecuencia);
+          }
+        } on Object catch (error, stackTrace) {
+          debugPrint('GotaControl: no se pudo programar el respaldo: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+      }
+      runApp(
+        ChangeNotifierProvider.value(
+          value: provider,
+          child: const GotaControlApp(),
+        ),
+      );
+
+      if (!kIsWeb) {
+        try {
+          await NotificacionService.instance.inicializarNotificaciones();
+        } on Object catch (error, stackTrace) {
+          debugPrint('GotaControl: no se inicializaron notificaciones: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+      }
+    },
+    (Object error, StackTrace stack) {
+      debugPrint('GotaControl [Zona no capturada]: $error');
+      debugPrintStack(stackTrace: stack);
+    },
   );
 }
 
@@ -66,7 +150,7 @@ class GotaControlApp extends StatelessWidget {
         ),
         dividerColor: AppColors.divider,
       ),
-      home: const MainShell(),
+      home: const PinSecurityGate(child: MainShell()),
     );
   }
 }

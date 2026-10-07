@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/constants/db_constants.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/cliente.dart';
 import '../../data/models/cuota.dart';
@@ -7,17 +8,21 @@ import '../../data/models/pago.dart';
 import '../../data/models/prestamo.dart';
 import '../services/calculadora_service.dart';
 import '../services/mora_service.dart';
+import '../services/ajustes_negocio_validator.dart';
+import '../services/pin_hash_service.dart';
 
 class GotaProvider extends ChangeNotifier {
   GotaProvider({
     DatabaseHelper? databaseHelper,
     this._calculadora = const CalculadoraService(),
+    this._pinHashService = const PinHashService(),
     DateTime Function()? reloj,
   }) : _databaseHelper = databaseHelper ?? DatabaseHelper.instance,
        _reloj = reloj ?? DateTime.now;
 
   final DatabaseHelper _databaseHelper;
   final CalculadoraService _calculadora;
+  final PinHashService _pinHashService;
   final DateTime Function() _reloj;
 
   List<Cliente> _clientes = [];
@@ -26,12 +31,34 @@ class GotaProvider extends ChangeNotifier {
   List<Pago> _pagosHoy = [];
   List<Pago> _pagos = [];
   Map<String, dynamic> _resumenDashboard = {};
+  Map<String, Object?>? _configuracion;
   List<PrestamoEnMora> _moras = [];
   bool cargando = true;
   String? errorCarga;
+  String? avisoRespaldoInicio;
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  void _safeNotify() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
+  void mostrarAvisoRespaldoInicio(String mensaje) {
+    avisoRespaldoInicio = mensaje;
+    _safeNotify();
+  }
 
   List<Cliente> get clientes =>
       List.unmodifiable(_clientes.where((cliente) => cliente.activo));
+
+  List<Cliente> get clientesRegistrados => List.unmodifiable(_clientes);
 
   List<Prestamo> get prestamos => List.unmodifiable(_prestamos);
 
@@ -45,6 +72,13 @@ class GotaProvider extends ChangeNotifier {
   List<Pago> get pagosHoy => List.unmodifiable(_pagosHoy);
   Map<String, dynamic> get resumenDashboard =>
       Map.unmodifiable(_resumenDashboard);
+  Map<String, Object?>? get configuracion =>
+      _configuracion == null ? null : Map.unmodifiable(_configuracion!);
+  bool get pinActivo {
+    final hash = _configuracion?[DbConstants.configuracionPinHash] as String?;
+    return hash != null && hash.isNotEmpty;
+  }
+
   List<PrestamoEnMora> get moras => List.unmodifiable(_moras);
 
   double get totalEnCalle => _valorDouble(_resumenDashboard['total_en_calle']);
@@ -72,7 +106,7 @@ class GotaProvider extends ChangeNotifier {
   Future<void> cargarDatos() async {
     cargando = true;
     errorCarga = null;
-    notifyListeners();
+    _safeNotify();
 
     try {
       final clientes = await _databaseHelper.obtenerTodosLosClientes();
@@ -113,6 +147,7 @@ class GotaProvider extends ChangeNotifier {
       }
 
       final resumen = await _databaseHelper.obtenerResumenDashboard();
+      final configuracion = await _databaseHelper.obtenerConfiguracion();
       final clientesPorId = {
         for (final cliente in clientes)
           if (cliente.id != null) cliente.id!: cliente,
@@ -130,13 +165,14 @@ class GotaProvider extends ChangeNotifier {
       _pagos = pagosPorId.values.toList()
         ..sort((a, b) => b.fechaHora.compareTo(a.fechaHora));
       _resumenDashboard = resumen;
+      _configuracion = configuracion;
       _moras = moras;
     } on Object catch (error, stackTrace) {
       errorCarga = error.toString();
       debugPrint('GotaControl: error cargando SQLite: $error\n$stackTrace');
     } finally {
       cargando = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -145,27 +181,134 @@ class GotaProvider extends ChangeNotifier {
     required String telefono,
     String? cedula,
   }) async {
-    if (nombre.trim().isEmpty || telefono.trim().isEmpty) {
+    final nombreLimpio = nombre.trim();
+    final telefonoLimpio = telefono.trim();
+    final cedulaLimpia = cedula?.trim();
+
+    if (nombreLimpio.isEmpty || telefonoLimpio.isEmpty) {
       throw ArgumentError('Nombre y teléfono son obligatorios.');
     }
-    await _databaseHelper.insertarCliente(
-      Cliente(
-        nombre: nombre.trim(),
-        telefono: telefono.trim(),
-        cedula: cedula?.trim().isEmpty ?? true ? null : cedula!.trim(),
-        fechaRegistro: _reloj(),
-      ),
-    );
+
+    try {
+      await _databaseHelper.insertarCliente(
+        Cliente(
+          nombre: nombreLimpio,
+          telefono: telefonoLimpio,
+          cedula: (cedulaLimpia == null || cedulaLimpia.isEmpty)
+              ? null
+              : cedulaLimpia,
+          fechaRegistro: _reloj(),
+        ),
+      );
+    } on Object catch (error, stackTrace) {
+      debugPrint('GotaControl: error al insertar cliente: $error\n$stackTrace');
+      errorCarga = _mensajeAmigable('No se pudo guardar el cliente', error);
+      _safeNotify();
+      rethrow;
+    }
+
     await cargarDatos();
   }
 
   Future<void> eliminarCliente(int id) async {
-    await _databaseHelper.eliminarCliente(id);
+    try {
+      await _databaseHelper.eliminarCliente(id);
+    } on Object catch (error, stackTrace) {
+      debugPrint('GotaControl: error al eliminar cliente: $error\n$stackTrace');
+      errorCarga = _mensajeAmigable('No se pudo eliminar el cliente', error);
+      _safeNotify();
+      rethrow;
+    }
     await cargarDatos();
   }
 
   Future<bool> clienteEstaPazYSalvo(int clienteId) =>
       _databaseHelper.clienteEstaPazYSalvo(clienteId);
+
+  Future<void> configurarPin(String pin) async {
+    final hash = await _pinHashService.hash(pin);
+    await _databaseHelper.guardarHashPin(hash);
+    _configuracion = await _databaseHelper.obtenerConfiguracion();
+    errorCarga = null;
+    _safeNotify();
+  }
+
+  Future<void> desactivarPin() async {
+    await _databaseHelper.guardarHashPin(null);
+    _configuracion = await _databaseHelper.obtenerConfiguracion();
+    errorCarga = null;
+    _safeNotify();
+  }
+
+  Future<PinValidationResult> validarPin(String pin) async {
+    final configuracion =
+        _configuracion ?? await _databaseHelper.obtenerConfiguracion();
+    final hash = configuracion?[DbConstants.configuracionPinHash] as String?;
+    if (hash == null || hash.isEmpty) return PinValidationResult.invalid;
+
+    final lockUntilValue =
+        configuracion?[DbConstants.configuracionPinBloqueadoHasta] as num?;
+    final lockUntil = lockUntilValue == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(lockUntilValue.toInt());
+    final ahora = _reloj();
+    if (lockUntil != null && lockUntil.isAfter(ahora)) {
+      return PinValidationResult.locked;
+    }
+
+    if (await _pinHashService.verify(pin, hash)) {
+      await _databaseHelper.guardarIntentosFallidosPin(intentos: 0);
+      _configuracion = await _databaseHelper.obtenerConfiguracion();
+      _safeNotify();
+      return PinValidationResult.valid;
+    }
+
+    final intentosActuales =
+        (configuracion?[DbConstants.configuracionPinIntentosFallidos] as num?)
+            ?.toInt() ??
+        0;
+    final intentos = intentosActuales + 1;
+    final bloqueado = intentos >= 5;
+    await _databaseHelper.guardarIntentosFallidosPin(
+      intentos: bloqueado ? 0 : intentos,
+      bloqueadoHasta: bloqueado ? ahora.add(const Duration(seconds: 30)) : null,
+    );
+    _configuracion = await _databaseHelper.obtenerConfiguracion();
+    _safeNotify();
+    return bloqueado ? PinValidationResult.locked : PinValidationResult.invalid;
+  }
+
+  Duration? get tiempoBloqueoPin {
+    final timestamp =
+        _configuracion?[DbConstants.configuracionPinBloqueadoHasta] as num?;
+    if (timestamp == null) return null;
+    final restante = DateTime.fromMillisecondsSinceEpoch(
+      timestamp.toInt(),
+    ).difference(_reloj());
+    return restante.isNegative || restante == Duration.zero ? null : restante;
+  }
+
+  Future<void> guardarConfiguracion(Map<String, Object?> cambios) async {
+    const camposValidados = {
+      DbConstants.configuracionNombreNegocio,
+      DbConstants.configuracionTelefonoNegocio,
+      DbConstants.configuracionDireccionNegocio,
+      DbConstants.configuracionPorcentajeMora,
+      DbConstants.configuracionDiasGraciaMora,
+    };
+    if (cambios.keys.any(camposValidados.contains)) {
+      final configuracionActual =
+          _configuracion ?? await _databaseHelper.obtenerConfiguracion() ?? {};
+      AjustesNegocioValidator.validar({
+        ...configuracionActual,
+        ...cambios,
+      });
+    }
+    await _databaseHelper.guardarConfiguracion(cambios);
+    _configuracion = await _databaseHelper.obtenerConfiguracion();
+    errorCarga = null;
+    _safeNotify();
+  }
 
   Future<Prestamo> crearPrestamo({
     required int clienteId,
@@ -179,6 +322,7 @@ class GotaProvider extends ChangeNotifier {
     if (cliente == null || !cliente.activo) {
       throw StateError('Selecciona un cliente activo.');
     }
+
     final calculo = _calculadora.calcularPrestamo(
       capital: capital,
       porcentajeInteres: porcentajeInteres,
@@ -218,12 +362,19 @@ class GotaProvider extends ChangeNotifier {
         ),
     ];
 
-    final prestamoId = await _databaseHelper.crearPrestamoConCuotas(
-      prestamo,
-      cuotas,
-    );
-    await cargarDatos();
-    return _prestamoPorId(prestamoId) ?? prestamo.copyWith(id: prestamoId);
+    try {
+      final prestamoId = await _databaseHelper.crearPrestamoConCuotas(
+        prestamo,
+        cuotas,
+      );
+      await cargarDatos();
+      return _prestamoPorId(prestamoId) ?? prestamo.copyWith(id: prestamoId);
+    } on Object catch (error, stackTrace) {
+      debugPrint('GotaControl: error al crear préstamo: $error\n$stackTrace');
+      errorCarga = _mensajeAmigable('No se pudo crear el préstamo', error);
+      _safeNotify();
+      rethrow;
+    }
   }
 
   Future<Pago> registrarPago({
@@ -252,9 +403,15 @@ class GotaProvider extends ChangeNotifier {
       nota: nota,
       registradoPor: 'App',
     );
-    final pagoId = await _databaseHelper.registrarPago(pago);
-    await cargarDatos();
-    return pago.copyWith(id: pagoId);
+
+    try {
+      final pagoId = await _databaseHelper.registrarPago(pago);
+      await cargarDatos();
+      return pago.copyWith(id: pagoId);
+    } on Object catch (error, stackTrace) {
+      debugPrint('GotaControl: error al registrar pago: $error\n$stackTrace');
+      rethrow;
+    }
   }
 
   Cliente? clientePorId(int id) {
@@ -332,4 +489,24 @@ class GotaProvider extends ChangeNotifier {
       a.year == b.year && a.month == b.month && a.day == b.day;
 
   static double _valorDouble(Object? valor) => (valor as num?)?.toDouble() ?? 0;
+
+  static String _mensajeAmigable(String prefijo, Object error) {
+    final texto = error.toString();
+    if (texto.contains('UNIQUE constraint failed')) {
+      if (texto.contains('cedula')) {
+        return 'Ya existe un cliente con esa cédula.';
+      }
+      return 'Ya existe un registro con esos datos.';
+    }
+    if (texto.contains('FOREIGN KEY constraint failed')) {
+      return 'No se puede completar: hay una referencia inválida.';
+    }
+    if (texto.contains('database is locked')) {
+      return 'La base de datos está ocupada. Intenta de nuevo.';
+    }
+    if (texto.contains('no such table')) {
+      return 'La base de datos no está inicializada correctamente.';
+    }
+    return '$prefijo: $texto';
+  }
 }

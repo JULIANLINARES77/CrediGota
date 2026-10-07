@@ -7,6 +7,7 @@ import '../screens/clientes/clientes_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
 import '../screens/prestamos/nuevo_prestamo_screen.dart';
 import '../screens/reportes/reportes_screen.dart';
+import '../widgets/database_status_overlay.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -17,21 +18,47 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _indice = 0;
+  int _clientesRevision = 0;
+  String _filtroInicialClientes = 'Todos';
+
+  void _abrirClientes(String filtro) {
+    setState(() {
+      _indice = 1;
+      _filtroInicialClientes = filtro;
+      _clientesRevision++;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final paginas = [
-      DashboardScreen(onNuevoPrestamo: () => setState(() => _indice = 2)),
-      const ClientesScreen(),
+      DashboardScreen(
+        onNuevoPrestamo: () => setState(() => _indice = 2),
+        onClientes: () => _abrirClientes('Todos'),
+        onMora: () => _abrirClientes('En mora'),
+        onPrestamos: () => _abrirClientes('Con préstamos'),
+      ),
+      ClientesScreen(
+        key: ValueKey(_clientesRevision),
+        filtroInicial: _filtroInicialClientes,
+      ),
       const NuevoPrestamoScreen(),
       const ReportesScreen(),
       const AjustesScreen(),
     ];
     return Scaffold(
-      body: IndexedStack(index: _indice, children: paginas),
+      body: DatabaseStatusOverlay(
+        child: IndexedStack(index: _indice, children: paginas),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _indice,
-        onDestinationSelected: (indice) => setState(() => _indice = indice),
+        onDestinationSelected: (indice) => setState(() {
+          _indice = indice;
+          if (indice == 1) {
+            _filtroInicialClientes = 'Todos';
+            _clientesRevision++;
+          }
+        }),
         backgroundColor: AppColors.surface,
         indicatorColor: AppColors.primary.withValues(alpha: 0.14),
         destinations: const [

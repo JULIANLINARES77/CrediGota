@@ -8,14 +8,24 @@ import '../../../data/models/cuota.dart';
 import '../../../data/models/prestamo.dart';
 import '../../../logic/providers/gota_provider.dart';
 import '../../widgets/cliente_card.dart';
+import '../../widgets/gotacontrol_logo.dart';
 import '../../widgets/payment_bottom_sheet.dart';
 import '../../widgets/resumen_card.dart';
 import '../prestamos/prestamo_detail_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key, required this.onNuevoPrestamo});
+  const DashboardScreen({
+    super.key,
+    required this.onNuevoPrestamo,
+    required this.onClientes,
+    required this.onMora,
+    required this.onPrestamos,
+  });
 
   final VoidCallback onNuevoPrestamo;
+  final VoidCallback onClientes;
+  final VoidCallback onMora;
+  final VoidCallback onPrestamos;
 
   @override
   Widget build(BuildContext context) {
@@ -23,56 +33,29 @@ class DashboardScreen extends StatelessWidget {
     if (demo.cargando) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (demo.errorCarga != null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text(AppStrings.appName)),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.storage_outlined, size: 42),
-                const SizedBox(height: 12),
-                const Text(
-                  'No se pudo abrir la base de datos local.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  demo.errorCarga!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: demo.cargarDatos,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reintentar'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
     final ancho = MediaQuery.sizeOf(context).width;
     final dosColumnas = ancho > 650;
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            const Text(
-              AppStrings.appName,
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            Text(
-              GotaDateUtils.formatearFecha(DateTime.now()),
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+            const GotaControlLogo(size: 40),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  AppStrings.appName,
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  GotaDateUtils.formatearFecha(DateTime.now()),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -103,6 +86,18 @@ class DashboardScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
             children: [
+              if (demo.avisoRespaldoInicio case final String aviso)
+                Card(
+                  color: AppColors.warning.withValues(alpha: 0.12),
+                  child: ListTile(
+                    leading: const Icon(
+                      Icons.warning_amber_rounded,
+                      color: AppColors.warning,
+                    ),
+                    title: const Text('Revisa el respaldo'),
+                    subtitle: Text(aviso),
+                  ),
+                ),
               ResumenCard(
                 titulo: AppStrings.profitToday,
                 valor: GotaDateUtils.formatearMoneda(demo.gananciaHoy),
@@ -139,6 +134,9 @@ class DashboardScreen extends StatelessWidget {
                 clientes: demo.clientesActivos,
                 enMora: demo.clientesEnMora,
                 prestamos: demo.prestamosActivos.length,
+                onClientes: onClientes,
+                onMora: onMora,
+                onPrestamos: onPrestamos,
               ),
               const SizedBox(height: 26),
               _TituloSeccion(
@@ -146,7 +144,7 @@ class DashboardScreen extends StatelessWidget {
                 contador: demo.cuotasDeHoy.length,
                 trailing: IconButton(
                   tooltip: 'Ver lista de clientes',
-                  onPressed: () {},
+                  onPressed: onPrestamos,
                   icon: const Icon(Icons.arrow_forward),
                 ),
               ),
@@ -161,6 +159,11 @@ class DashboardScreen extends StatelessWidget {
               _TituloSeccion(
                 titulo: AppStrings.overdueClients,
                 contador: demo.moras.length,
+                trailing: IconButton(
+                  tooltip: 'Ver clientes en mora',
+                  onPressed: onMora,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
               ),
               const SizedBox(height: 8),
               if (demo.moras.isEmpty)
@@ -275,11 +278,17 @@ class _Estadisticas extends StatelessWidget {
     required this.clientes,
     required this.enMora,
     required this.prestamos,
+    required this.onClientes,
+    required this.onMora,
+    required this.onPrestamos,
   });
 
   final int clientes;
   final int enMora;
   final int prestamos;
+  final VoidCallback onClientes;
+  final VoidCallback onMora;
+  final VoidCallback onPrestamos;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -288,6 +297,7 @@ class _Estadisticas extends StatelessWidget {
         label: 'Clientes',
         valor: '$clientes',
         icono: Icons.people_outline,
+        onTap: onClientes,
       ),
       const SizedBox(width: 8),
       _DatoCompacto(
@@ -295,12 +305,14 @@ class _Estadisticas extends StatelessWidget {
         valor: '$enMora',
         icono: Icons.warning_amber,
         color: enMora > 0 ? AppColors.error : AppColors.primary,
+        onTap: onMora,
       ),
       const SizedBox(width: 8),
       _DatoCompacto(
         label: 'Préstamos',
         valor: '$prestamos',
         icono: Icons.receipt_long_outlined,
+        onTap: onPrestamos,
       ),
     ],
   );
@@ -311,42 +323,53 @@ class _DatoCompacto extends StatelessWidget {
     required this.label,
     required this.valor,
     required this.icono,
+    required this.onTap,
     this.color = AppColors.textSecondary,
   });
 
   final String label;
   final String valor;
   final IconData icono;
+  final VoidCallback onTap;
   final Color color;
 
   @override
   Widget build(BuildContext context) => Expanded(
     child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.divider),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icono, color: color, size: 19),
-          const SizedBox(height: 8),
-          Text(
-            valor,
-            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icono, color: color, size: 19),
+              const SizedBox(height: 8),
+              Text(
+                valor,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
+        ),
       ),
     ),
   );

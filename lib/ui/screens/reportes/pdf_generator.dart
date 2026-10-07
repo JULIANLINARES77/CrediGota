@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -16,6 +15,16 @@ class PdfGenerator {
   static const _verde = PdfColor.fromInt(0xFF087A42);
   static const _gris = PdfColor.fromInt(0xFF60646C);
   static final _calculadora = const CalculadoraService();
+  static final Future<pw.ThemeData> _temaPdf = _cargarTemaPdf();
+
+  static Future<pw.ThemeData> _cargarTemaPdf() async {
+    final regular = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+    final bold = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+    return pw.ThemeData.withFont(
+      base: pw.Font.ttf(regular),
+      bold: pw.Font.ttf(bold),
+    );
+  }
 
   static Future<Uint8List> reporteDiario(GotaProvider demo, DateTime fecha) {
     final pagos = demo.pagos
@@ -96,20 +105,17 @@ class PdfGenerator {
       _titulo('Vencimientos de mañana'),
       _tabla(
         ['Cliente', 'Cuota', 'Valor'],
-        proximos
-            .map(
-              (cuota) => [
-                demo
-                        .clientePorId(
-                          demo.prestamoPorId(cuota.prestamoId)!.clienteId,
-                        )
-                        ?.nombre ??
-                    'Cliente',
-                '${cuota.numeroCuota}',
-                _pesos(cuota.montoCuota - cuota.montoPagado),
-              ],
-            )
-            .toList(),
+        proximos.map((cuota) {
+          final prestamo = demo.prestamoPorId(cuota.prestamoId);
+          final cliente = prestamo == null
+              ? null
+              : demo.clientePorId(prestamo.clienteId);
+          return [
+            cliente?.nombre ?? 'Cliente no disponible',
+            '${cuota.numeroCuota}',
+            _pesos(cuota.montoCuota - cuota.montoPagado),
+          ];
+        }).toList(),
       ),
     ]);
   }
@@ -329,6 +335,92 @@ class PdfGenerator {
     ]);
   }
 
+  static Future<Uint8List> respaldoCompleto(GotaProvider provider) {
+    final clientesPorId = {
+      for (final cliente in provider.clientesRegistrados)
+        if (cliente.id != null) cliente.id!: cliente,
+    };
+    final filasPrestamos = provider.prestamos
+        .map(
+          (prestamo) => [
+            '${prestamo.id ?? ''}',
+            clientesPorId[prestamo.clienteId]?.nombre ?? 'Cliente eliminado',
+            _pesos(prestamo.montoCapital),
+            _pesos(prestamo.saldoPendiente),
+            prestamo.estado,
+          ],
+        )
+        .toList();
+    final filasCuotas = provider.todasLasCuotas
+        .map(
+          (cuota) => [
+            '${cuota.prestamoId}',
+            '${cuota.numeroCuota}',
+            GotaDateUtils.formatearFecha(cuota.fechaVencimiento),
+            _pesos(cuota.montoCuota),
+            _pesos(cuota.montoPagado),
+            cuota.estado,
+          ],
+        )
+        .toList();
+    final filasPagos = provider.pagos
+        .map(
+          (pago) => [
+            '${pago.id ?? ''}',
+            clientesPorId[pago.clienteId]?.nombre ?? 'Cliente eliminado',
+            '${pago.prestamoId}',
+            _pesos(pago.monto),
+            GotaDateUtils.formatearFechaHora(pago.fechaHora),
+            pago.metodoPago ?? 'Sin método',
+          ],
+        )
+        .toList();
+
+    return _documento('Respaldo completo de datos', DateTime.now(), [
+      _resumen([
+        ('Clientes', '${provider.clientesRegistrados.length}'),
+        ('Préstamos', '${provider.prestamos.length}'),
+        ('Cuotas', '${provider.todasLasCuotas.length}'),
+        ('Pagos', '${provider.pagos.length}'),
+      ]),
+      _titulo('Clientes'),
+      _tabla(
+        ['ID', 'Nombre', 'Cédula', 'Teléfono', 'Dirección'],
+        provider.clientesRegistrados
+            .map(
+              (cliente) => [
+                '${cliente.id ?? ''}',
+                cliente.nombre,
+                cliente.cedula ?? '',
+                cliente.telefono,
+                cliente.direccion ?? '',
+              ],
+            )
+            .toList(),
+      ),
+      _titulo('Préstamos'),
+      _tabla(['ID', 'Cliente', 'Capital', 'Saldo', 'Estado'], filasPrestamos),
+      _titulo('Cuotas'),
+      _tabla([
+        'Préstamo',
+        'N.º',
+        'Vencimiento',
+        'Valor',
+        'Pagado',
+        'Estado',
+      ], filasCuotas),
+      _titulo('Pagos'),
+      _tabla([
+        'ID',
+        'Cliente',
+        'Préstamo',
+        'Monto',
+        'Fecha',
+        'Método',
+      ], filasPagos),
+    ]);
+  }
+
   static Future<void> imprimir(Uint8List bytes) => Printing.layoutPdf(
     onLayout: (_) async => bytes,
     name: 'GotaControl-reporte.pdf',
@@ -350,7 +442,7 @@ class PdfGenerator {
     DateTime fecha,
     List<pw.Widget> contenido,
   ) async {
-    final documento = pw.Document();
+    final documento = pw.Document(theme: await _temaPdf);
     documento.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,

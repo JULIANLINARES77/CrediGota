@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/miles_input_formatter.dart';
 import '../../data/models/cliente.dart';
 import '../../data/models/cuota.dart';
 import '../../data/models/prestamo.dart';
@@ -49,7 +50,10 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
   void initState() {
     super.initState();
     final saldo = widget.cuota.montoCuota - widget.cuota.montoPagado;
-    _montoController = TextEditingController(text: saldo.toStringAsFixed(0));
+    // Formatear con separadores de miles igual que MilesInputFormatter
+    _montoController = TextEditingController(
+      text: _formatearMiles(saldo.round().toString()),
+    );
   }
 
   @override
@@ -57,6 +61,21 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
     _montoController.dispose();
     _notaController.dispose();
     super.dispose();
+  }
+
+  static String _formatearMiles(String digitos) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < digitos.length; i++) {
+      if (i > 0 && (digitos.length - i) % 3 == 0) buffer.write('.');
+      buffer.write(digitos[i]);
+    }
+    return buffer.toString();
+  }
+
+  double? _parsearMonto(String texto) {
+    final limpio = texto.replaceAll('.', '').replaceAll(',', '').trim();
+    if (limpio.isEmpty) return null;
+    return double.tryParse(limpio);
   }
 
   @override
@@ -98,11 +117,10 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
             const SizedBox(height: 18),
             TextField(
               controller: _montoController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
+              keyboardType: TextInputType.number,
               inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                LengthLimitingTextInputFormatter(15),
+                const MilesInputFormatter(maxDigits: 12),
               ],
               decoration: InputDecoration(
                 labelText: 'Monto recibido',
@@ -163,32 +181,52 @@ class _PaymentBottomSheetState extends State<PaymentBottomSheet> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (seleccion != null) setState(() => _fecha = seleccion);
+    if (seleccion != null && mounted) setState(() => _fecha = seleccion);
   }
 
   Future<void> _confirmar() async {
-    final monto = double.tryParse(_montoController.text.replaceAll(',', '.'));
+    final monto = _parsearMonto(_montoController.text);
+    if (monto == null || monto <= 0) {
+      setState(() => _error = 'Ingresa un monto válido mayor a cero.');
+      return;
+    }
+
+    final prestamo = widget.prestamo;
+    final cuota = widget.cuota;
+    if (prestamo.id == null || cuota.id == null) {
+      setState(() => _error = 'Datos del préstamo incompletos.');
+      return;
+    }
+
     try {
-      await context.read<GotaProvider>().registrarPago(
-        prestamoId: widget.prestamo.id!,
-        cuotaId: widget.cuota.id!,
-        monto: monto ?? 0,
+      final provider = context.read<GotaProvider>();
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+
+      await provider.registrarPago(
+        prestamoId: prestamo.id!,
+        cuotaId: cuota.id!,
+        monto: monto,
         metodoPago: _metodo,
         fecha: _fecha,
         nota: _notaController.text.trim().isEmpty
             ? null
             : _notaController.text.trim(),
       );
-        if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      Navigator.pop(context);
+
+      if (!mounted) return;
+      navigator.pop();
       messenger.showSnackBar(
         const SnackBar(content: Text('Pago registrado correctamente')),
       );
     } on Object catch (error) {
       if (!mounted) return;
       setState(
-        () => _error = error.toString().replaceFirst('ArgumentError: ', ''),
+        () => _error = error
+            .toString()
+            .replaceFirst('ArgumentError: ', '')
+            .replaceFirst('StateError: ', '')
+            .replaceFirst('DatabaseException(', ''),
       );
     }
   }

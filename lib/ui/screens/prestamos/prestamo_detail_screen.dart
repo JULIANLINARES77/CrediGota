@@ -16,19 +16,40 @@ class PrestamoDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final demo = context.watch<GotaProvider>();
+    if (demo.cargando) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detalle del préstamo')),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (demo.errorCarga != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detalle del préstamo')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('No se pudo cargar el detalle del préstamo.'),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: demo.cargarDatos,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final prestamo = demo.prestamoPorId(prestamoId);
     if (prestamo == null) {
-      return const Scaffold(
-        body: Center(child: Text('No se encontró el préstamo.')),
-      );
+      return _estadoNoEncontrado(context, 'No se encontró el préstamo.');
     }
     final cliente = demo.clientePorId(prestamo.clienteId);
-    if (cliente == null) {
-      return const Scaffold(
-        body: Center(child: Text('No se encontró el cliente.')),
-      );
+    if (cliente == null || cliente.id == null) {
+      return _estadoNoEncontrado(context, 'No se encontró el cliente.');
     }
-    final prestamosCliente = demo.prestamosDeCliente(cliente.id!)
+    final prestamosCliente = demo.prestamosDeCliente(cliente.id!).toList()
       ..sort((a, b) => b.fechaInicio.compareTo(a.fechaInicio));
     final cuotas = demo.cuotasDePrestamo(prestamoId);
     final pagadas = cuotas.where((cuota) => cuota.estado == 'PAGADA').length;
@@ -98,7 +119,7 @@ class PrestamoDetailScreen extends StatelessWidget {
                 (item) => _HistorialPrestamoTile(
                   prestamo: item,
                   seleccionado: item.id == prestamo.id,
-                  onTap: item.id == prestamo.id
+                  onTap: item.id == null || item.id == prestamo.id
                       ? null
                       : () => Navigator.push(
                           context,
@@ -197,28 +218,48 @@ class PrestamoDetailScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              const _EncabezadoCuotas(),
-              const SizedBox(height: 8),
-              ...cuotas.map(
-                (cuota) => CuotaRow(
-                  cuota: cuota,
-                  diasAtraso: cuota.estado == 'PAGADA'
-                      ? 0
-                      : _diasAtraso(cuota.fechaVencimiento),
-                  onPagar: () => PaymentBottomSheet.show(
-                    context,
-                    cliente: cliente,
-                    prestamo: prestamo,
+              if (cuotas.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    'Este préstamo todavía no tiene cuotas registradas.',
+                  ),
+                )
+              else ...[
+                const _EncabezadoCuotas(),
+                const SizedBox(height: 8),
+                ...cuotas.map(
+                  (cuota) => CuotaRow(
                     cuota: cuota,
+                    diasAtraso: cuota.estado == 'PAGADA'
+                        ? 0
+                        : _diasAtraso(cuota.fechaVencimiento),
+                    onPagar: () => PaymentBottomSheet.show(
+                      context,
+                      cliente: cliente,
+                      prestamo: prestamo,
+                      cuota: cuota,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+
+  static Widget _estadoNoEncontrado(BuildContext context, String mensaje) =>
+      Scaffold(
+        appBar: AppBar(title: const Text('Detalle del préstamo')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(mensaje, textAlign: TextAlign.center),
+          ),
+        ),
+      );
 
   static int _diasAtraso(DateTime fecha) {
     final hoy = DateTime.now();
@@ -233,7 +274,9 @@ class PrestamoDetailScreen extends StatelessWidget {
     GotaProvider demo,
     Prestamo prestamo,
   ) {
-    final pagos = demo.pagosDePrestamo(prestamo.id!);
+    final prestamoId = prestamo.id;
+    if (prestamoId == null) return;
+    final pagos = demo.pagosDePrestamo(prestamoId);
     showModalBottomSheet<void>(
       context: context,
       builder: (context) => SafeArea(
@@ -440,23 +483,26 @@ class _EstadoPrestamo extends StatelessWidget {
   const _EstadoPrestamo({required this.estado});
   final String estado;
 
+  Color get _color => switch (estado) {
+    'MORA' => AppColors.error,
+    'PAGADO' => AppColors.primary,
+    'CANCELADO' => AppColors.textSecondary,
+    'ACTIVO' => AppColors.warning,
+    _ => AppColors.textSecondary,
+  };
+
   @override
   Widget build(BuildContext context) {
-    final color = estado == 'MORA'
-        ? AppColors.error
-        : estado == 'PAGADO'
-        ? AppColors.primary
-        : AppColors.warning;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: _color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         estado,
         style: TextStyle(
-          color: color,
+          color: _color,
           fontSize: 11,
           fontWeight: FontWeight.bold,
         ),

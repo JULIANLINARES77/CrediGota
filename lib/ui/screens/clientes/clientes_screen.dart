@@ -3,13 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../data/models/cliente.dart';
-import '../../../data/models/prestamo.dart';
 import '../../../logic/providers/gota_provider.dart';
 import '../../widgets/cliente_card.dart';
-import '../prestamos/prestamo_detail_screen.dart';
+import '../prestamos/prestamos_cliente_screen.dart';
 
 class ClientesScreen extends StatefulWidget {
-  const ClientesScreen({super.key});
+  const ClientesScreen({super.key, this.filtroInicial = 'Todos'});
+
+  final String filtroInicial;
 
   @override
   State<ClientesScreen> createState() => _ClientesScreenState();
@@ -17,7 +18,13 @@ class ClientesScreen extends StatefulWidget {
 
 class _ClientesScreenState extends State<ClientesScreen> {
   final _busqueda = TextEditingController();
-  String _filtro = 'Todos';
+  late String _filtro;
+
+  @override
+  void initState() {
+    super.initState();
+    _filtro = widget.filtroInicial;
+  }
 
   @override
   void dispose() {
@@ -30,18 +37,25 @@ class _ClientesScreenState extends State<ClientesScreen> {
     final demo = context.watch<GotaProvider>();
     final clientes = demo.clientes.where((cliente) {
       if (!cliente.activo) return false;
+      final id = cliente.id;
+      if (id == null) return false;
+
       final consulta = _busqueda.text.trim().toLowerCase();
       final coincide =
           cliente.nombre.toLowerCase().contains(consulta) ||
           (cliente.cedula ?? '').toLowerCase().contains(consulta) ||
           cliente.telefono.toLowerCase().contains(consulta);
       if (!coincide) return false;
-      final prestamos = demo.prestamosDeCliente(cliente.id!);
+
+      final prestamos = demo.prestamosDeCliente(id);
       return switch (_filtro) {
         'En mora' => prestamos.any((prestamo) => prestamo.estado == 'MORA'),
         'Pagados' =>
           prestamos.isNotEmpty &&
               prestamos.every((prestamo) => prestamo.estado == 'PAGADO'),
+        'Con préstamos' => prestamos.any(
+          (prestamo) => prestamo.estado != 'CANCELADO',
+        ),
         'Al día' => prestamos.any((prestamo) => prestamo.estado == 'ACTIVO'),
         _ => true,
       };
@@ -95,6 +109,7 @@ class _ClientesScreenState extends State<ClientesScreen> {
                       'Todos',
                       'Al día',
                       'En mora',
+                      'Con préstamos',
                       'Pagados',
                     ])
                       Padding(
@@ -138,14 +153,16 @@ class _ClientesScreenState extends State<ClientesScreen> {
   }
 
   Widget _clienteListTile(Cliente cliente, GotaProvider demo) {
-    final prestamos = demo.prestamosDeCliente(cliente.id!);
+    final clienteId = cliente.id;
+    if (clienteId == null) return const SizedBox.shrink();
+
+    final prestamos = demo.prestamosDeCliente(clienteId);
     final prestamosActivos = prestamos
         .where(
           (prestamo) =>
               prestamo.estado == 'ACTIVO' || prestamo.estado == 'MORA',
         )
         .toList();
-    final prestamo = prestamos.firstOrNull;
     final saldoPendiente = prestamosActivos.fold(
       0.0,
       (saldo, prestamo) => saldo + prestamo.saldoPendiente,
@@ -172,11 +189,11 @@ class _ClientesScreenState extends State<ClientesScreen> {
       estado: estado,
       proximoPago: cuotaSiguiente?.fechaVencimiento,
       cantidadPrestamosActivos: prestamosActivos.length,
-      onTap: prestamo == null ? null : () => _abrirPrestamo(prestamo),
+      onTap: () => _abrirPrestamosCliente(clienteId),
       onEliminar: () => _eliminarCliente(cliente),
     );
     return Dismissible(
-      key: ValueKey('cliente-${cliente.id}'),
+      key: ValueKey('cliente-$clienteId'),
       direction: DismissDirection.endToStart,
       confirmDismiss: (_) => _confirmarEliminacion(cliente),
       onDismissed: (_) => _desactivarCliente(cliente),
@@ -195,8 +212,11 @@ class _ClientesScreenState extends State<ClientesScreen> {
   }
 
   Future<bool> _confirmarEliminacion(Cliente cliente) async {
+    final clienteId = cliente.id;
+    if (clienteId == null) return false;
+
     final provider = context.read<GotaProvider>();
-    final estaPazYSalvo = await provider.clienteEstaPazYSalvo(cliente.id!);
+    final estaPazYSalvo = await provider.clienteEstaPazYSalvo(clienteId);
     if (!mounted) return false;
 
     if (!estaPazYSalvo) {
@@ -246,8 +266,10 @@ class _ClientesScreenState extends State<ClientesScreen> {
   }
 
   Future<void> _desactivarCliente(Cliente cliente) async {
+    final clienteId = cliente.id;
+    if (clienteId == null) return;
     try {
-      await context.read<GotaProvider>().eliminarCliente(cliente.id!);
+      await context.read<GotaProvider>().eliminarCliente(clienteId);
     } on Object catch (error) {
       if (!mounted) return;
       await context.read<GotaProvider>().cargarDatos();
@@ -262,73 +284,91 @@ class _ClientesScreenState extends State<ClientesScreen> {
     final nombre = TextEditingController();
     final telefono = TextEditingController();
     final cedula = TextEditingController();
-    final confirmado = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Nuevo cliente'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nombre,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Nombre completo'),
+
+    try {
+      final confirmado = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Nuevo cliente'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nombre,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Nombre completo'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: telefono,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Teléfono'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: cedula,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Cédula (opcional)',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: telefono,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Teléfono'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: cedula,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Cédula (opcional)'),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Guardar'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) {
-      nombre.dispose();
-      telefono.dispose();
-      cedula.dispose();
-      return;
-    }
-    if (confirmado == true) {
+      );
+
+      if (!mounted) return;
+      if (confirmado != true) return;
+
       if (nombre.text.trim().isEmpty || telefono.text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Nombre y teléfono son obligatorios.')),
         );
-      } else {
-        context.read<GotaProvider>().agregarCliente(
+        return;
+      }
+
+      try {
+        await context.read<GotaProvider>().agregarCliente(
           nombre: nombre.text,
           telefono: telefono.text,
           cedula: cedula.text.isEmpty ? null : cedula.text,
         );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cliente guardado correctamente.')),
+        );
+      } on Object catch (error) {
+        if (!mounted) return;
+        final mensaje = error
+            .toString()
+            .replaceFirst('ArgumentError: ', '')
+            .replaceFirst('StateError: ', '');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(mensaje)));
       }
+    } finally {
+      nombre.dispose();
+      telefono.dispose();
+      cedula.dispose();
     }
-    nombre.dispose();
-    telefono.dispose();
-    cedula.dispose();
   }
 
-  void _abrirPrestamo(Prestamo prestamo) {
+  void _abrirPrestamosCliente(int clienteId) {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => PrestamoDetailScreen(prestamoId: prestamo.id!),
+        builder: (_) => PrestamosClienteScreen(clienteId: clienteId),
       ),
     );
   }

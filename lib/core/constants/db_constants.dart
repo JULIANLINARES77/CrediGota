@@ -2,7 +2,7 @@ class DbConstants {
   DbConstants._();
 
   static const databaseName = 'gota_control.db';
-  static const databaseVersion = 1;
+  static const databaseVersion = 4;
 
   static const tableClientes = 'clientes';
   static const tablePrestamos = 'prestamos';
@@ -62,7 +62,16 @@ class DbConstants {
   static const configuracionPorcentajeMora = 'porcentaje_mora';
   static const configuracionDiasGraciaMora = 'dias_gracia_mora';
   static const configuracionPinSeguridad = 'pin_seguridad';
+  static const configuracionPinHash = 'pin_hash';
+  static const configuracionPinIntentosFallidos = 'pin_intentos_fallidos';
+  static const configuracionPinBloqueadoHasta = 'pin_bloqueado_hasta';
   static const configuracionMoneda = 'moneda';
+  static const configuracionDireccionNegocio = 'direccion_negocio';
+  static const configuracionAlertasMora = 'alertas_mora';
+  static const configuracionRecordatorioDiario = 'recordatorio_diario';
+  static const configuracionHoraRecordatorio = 'hora_recordatorio';
+  static const configuracionFrecuenciaRespaldo = 'frecuencia_respaldo';
+  static const configuracionUltimoRespaldo = 'ultimo_respaldo';
 
   static const indexPrestamosCliente = 'idx_prestamos_cliente';
   static const indexCuotasPrestamoFecha = 'idx_cuotas_prestamo_fecha';
