@@ -561,6 +561,36 @@ class DatabaseHelper {
     return rows.map(Prestamo.fromMap).toList();
   }
 
+  // ─────────────────────────── NUEVOS MÉTODOS OPTIMIZADOS ───────────────────────────
+
+  Future<List<Prestamo>> obtenerTodosLosPrestamos() async {
+    final db = await database;
+    final rows = await db.query(
+      DbConstants.tablePrestamos,
+      orderBy: '${DbConstants.prestamoFechaInicio} DESC',
+    );
+    return rows.map(Prestamo.fromMap).toList();
+  }
+
+  Future<List<Cuota>> obtenerTodasLasCuotas() async {
+    final db = await database;
+    final rows = await db.query(
+      DbConstants.tableCuotas,
+      orderBy:
+          '${DbConstants.cuotaPrestamoId} ASC, ${DbConstants.cuotaNumero} ASC',
+    );
+    return rows.map(Cuota.fromMap).toList();
+  }
+
+  Future<List<Pago>> obtenerTodosLosPagos() async {
+    final db = await database;
+    final rows = await db.query(
+      DbConstants.tablePagos,
+      orderBy: '${DbConstants.pagoFechaHora} DESC',
+    );
+    return rows.map(Pago.fromMap).toList();
+  }
+
   Future<Prestamo?> obtenerPrestamoPorId(int id) async {
     final db = await database;
     final rows = await db.query(
